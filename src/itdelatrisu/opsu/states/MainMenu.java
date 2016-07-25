@@ -237,7 +237,7 @@ public class MainMenu extends BasicGameState {
 		else {
 			Image bg = GameImage.MENU_BG.getImage();
 			bg.setAlpha(bgAlpha.getValue());
-			bg.draw();
+			bg.drawFilled(width, height);
 		}
 
 		// top/bottom horizontal bars

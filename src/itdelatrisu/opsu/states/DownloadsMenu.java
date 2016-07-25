@@ -418,7 +418,7 @@ public class DownloadsMenu extends BasicGameState {
 		boolean inDropdownMenu = serverMenu.contains(mouseX, mouseY);
 
 		// background
-		GameImage.SEARCH_BG.getImage().draw();
+		GameImage.SEARCH_BG.getImage().drawFilled(width, height);
 
 		// title
 		Fonts.LARGE.drawString(width * 0.024f, height * 0.03f, "Download Beatmaps!", Color.white);

@@ -83,7 +83,7 @@ public class GamePauseMenu extends BasicGameState {
 			GameImage.PAUSE_RETRY.hasBeatmapSkinImage() ||
 			GameImage.PAUSE_BACK.hasBeatmapSkinImage();
 		if (!buttonsSkinned || bg.hasBeatmapSkinImage())
-			bg.getImage().draw();
+			bg.getImage().drawFilled(container.getWidth(), container.getHeight());
 		else
 			g.setBackground(Color.black);
 

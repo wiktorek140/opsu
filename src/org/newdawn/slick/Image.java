@@ -567,6 +567,35 @@ public class Image implements Renderable {
 	}
 
 	/**
+	 * @param cWidth width of container
+	 * @param cHeight height of container
+	 */
+	public void drawFilled(int cWidth, int cHeight) {
+		// texture will not be copied
+		init();
+		int sWidth = cWidth, sHeight = cHeight;  // scaled image W/H
+		if (width / (float) height > cWidth / (float) cHeight)
+			sWidth = (int) (cHeight * width / (float) height);
+		else
+			sHeight = (int) (cWidth * height / (float) width);
+		draw(cWidth/2 - sWidth/2f, cHeight/2 - sHeight/2f, sWidth, sHeight);
+	}
+
+	/**
+	 * @param cWidth width of container
+	 * @param cHeight height of container
+	 */
+	public void drawFitted(int cWidth, int cHeight) {
+		init();
+		int sWidth = cWidth, sHeight = cHeight;  // scaled image W/H
+		if (width / (float) height > cWidth / (float) cHeight)
+			sHeight = (int) (cWidth * height / (float) width);
+		else
+			sWidth = (int) (cHeight * width / (float) height);
+		draw(cWidth/2 - sWidth/2f, cHeight/2 - sHeight/2f, sWidth, sHeight);
+	}
+
+	/**
 	 * Draw the image based on its center with a color filter
 	 *
 	 * @param x The x coordinate to place the image's center at

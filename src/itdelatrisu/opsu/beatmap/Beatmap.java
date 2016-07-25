@@ -309,10 +309,10 @@ public class Beatmap implements Comparable<Beatmap> {
 	 * @param width the container width
 	 * @param height the container height
 	 * @param alpha the alpha value
-	 * @param stretch if true, stretch to screen dimensions; otherwise, maintain aspect ratio
+	 * @param fill if true, fill the whole screen; otherwise fit to screen; aspect ratio always be kept
 	 * @return true if successful, false if any errors were produced
 	 */
-	public boolean drawBackground(int width, int height, float alpha, boolean stretch) {
+	public boolean drawBackground(int width, int height, float alpha, boolean fill) {
 		if (bg == null)
 			return false;
 
@@ -324,24 +324,13 @@ public class Beatmap implements Comparable<Beatmap> {
 		if (bgImage == null)
 			return true;
 
-		int swidth = width;
-		int sheight = height;
-		if (!stretch) {
-			// fit image to screen
-			if (bgImage.getWidth() / (float) bgImage.getHeight() > width / (float) height)  // x > y
-				sheight = (int) (width * bgImage.getHeight() / (float) bgImage.getWidth());
-			else
-				swidth = (int) (height * bgImage.getWidth() / (float) bgImage.getHeight());
-		} else {
-			// fill screen while maintaining aspect ratio
-			if (bgImage.getWidth() / (float) bgImage.getHeight() > width / (float) height)  // x > y
-				swidth = (int) (height * bgImage.getWidth() / (float) bgImage.getHeight());
-			else
-				sheight = (int) (width * bgImage.getHeight() / (float) bgImage.getWidth());
-		}
-		bgImage = bgImage.getScaledCopy(swidth, sheight);
+		float saved = bgImage.getAlpha();
 		bgImage.setAlpha(alpha);
-		bgImage.drawCentered(width / 2, height / 2);
+		if (fill)
+			bgImage.drawFilled(width, height);
+		else
+			bgImage.drawFitted(width, height);
+		bgImage.setAlpha(saved);
 		return true;
 	}
 
