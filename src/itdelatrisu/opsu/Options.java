@@ -162,7 +162,7 @@ public class Options {
 			return new File("./");
 
 		String OS = System.getProperty("os.name").toLowerCase();
-		if (OS.indexOf("nix") >= 0 || OS.indexOf("nux") >= 0 || OS.indexOf("aix") > 0) {
+		if (OS.contains("nix") || OS.contains("nux") || OS.contains("aix")) {
 			String rootPath = System.getenv(env);
 			if (rootPath == null) {
 				String home = System.getProperty("user.home");
@@ -293,12 +293,11 @@ public class Options {
 			@Override
 			public void read(String s) {
 				try {
-					Resolution res = Resolution.valueOf(String.format("RES_%s", s.replace('x', '_')));
-					resolution = res;
+					resolution = Resolution.valueOf(String.format("RES_%s", s.replace('x', '_')));
 				} catch (IllegalArgumentException e) {}
 			}
 		},
-//		FULLSCREEN ("Fullscreen Mode", "Fullscreen", "Restart to apply changes.", false),
+		FULLSCREEN ("Fullscreen Mode", "Fullscreen", "Restart to apply changes.", false),
 		SKIN ("Skin", "Skin", "Restart (Ctrl+Shift+F5) to apply skin changes.") {
 			@Override
 			public String getValueString() { return skinName; }
@@ -538,7 +537,7 @@ public class Options {
 		private int max, min;
 
 		/** Option types. */
-		private enum OptionType { BOOLEAN, NUMERIC, OTHER };
+		private enum OptionType { BOOLEAN, NUMERIC, OTHER }
 
 		/** Whether or not this is a numeric option. */
 		private OptionType type = OptionType.OTHER;
@@ -704,7 +703,7 @@ public class Options {
 			} else if (type == OptionType.BOOLEAN)
 				bool = Boolean.parseBoolean(s);
 		}
-	};
+	}
 
 	/** Map of option display names to GameOptions. */
 	private static HashMap<String, GameOption> optionMap;
@@ -871,7 +870,7 @@ public class Options {
 	 * available resolution will be used.
 	 * @param app the game container
 	 */
-	public static void setDisplayMode(Container app) {
+	public static void setDisplayMode(RootContainer app) {
 		int screenWidth = app.getScreenWidth();
 		int screenHeight = app.getScreenHeight();
 
@@ -880,7 +879,7 @@ public class Options {
 			resolution = Resolution.RES_800_600;
 
 		try {
-			app.setDisplayMode(resolution.getWidth(), resolution.getHeight(), false);
+			app.setDisplayMode(resolution.getWidth(), resolution.getHeight(), isFullscreen());
 		} catch (SlickException e) {
 			ErrorHandler.error("Failed to set display mode.", e, true);
 		}
@@ -890,28 +889,12 @@ public class Options {
 		System.setProperty("org.lwjgl.opengl.Window.undecorated", Boolean.toString(borderless));
 	}
 
-//	/**
-//	 * Returns whether or not fullscreen mode is enabled.
-//	 * @return true if enabled
-//	 */
-//	public static boolean isFullscreen() { return fullscreen; }
+	public static boolean isFullscreen() { return GameOption.FULLSCREEN.getBooleanValue(); }
 
-	/**
-	 * Returns whether or not the FPS counter display is enabled.
-	 * @return true if enabled
-	 */
 	public static boolean isFPSCounterEnabled() { return GameOption.SHOW_FPS.getBooleanValue(); }
 
-	/**
-	 * Returns whether or not hit lighting effects are enabled.
-	 * @return true if enabled
-	 */
 	public static boolean isHitLightingEnabled() { return GameOption.SHOW_HIT_LIGHTING.getBooleanValue(); }
 
-	/**
-	 * Returns whether or not combo burst effects are enabled.
-	 * @return true if enabled
-	 */
 	public static boolean isComboBurstEnabled() { return GameOption.SHOW_COMBO_BURSTS.getBooleanValue(); }
 
 	/**
@@ -1359,7 +1342,7 @@ public class Options {
 
 		// create option map
 		if (optionMap == null) {
-			optionMap = new HashMap<String, GameOption>();
+			optionMap = new HashMap<>();
 			for (GameOption option : GameOption.values())
 				optionMap.put(option.getDisplayName(), option);
 		}
