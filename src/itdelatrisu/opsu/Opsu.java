@@ -193,7 +193,7 @@ public class Opsu extends StateBasedGame {
 			// loop until force exit
 			while (true) {
 				Opsu opsu = new Opsu("opsu!");
-				Container app = new Container(opsu);
+				RootContainer app = new RootContainer(opsu);
 
 				// basic game settings
 				Options.setDisplayMode(app);

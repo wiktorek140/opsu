@@ -95,14 +95,14 @@ public enum GameImage {
 		@Override
 		protected Image process_sub(Image img, int w, int h) {
 			img.setAlpha(0.7f);
-			return img.getScaledCopy(w, h);
+			return img;
 		}
 	},
 	FAIL_BACKGROUND ("fail-background", "png|jpg") {
 		@Override
 		protected Image process_sub(Image img, int w, int h) {
 			img.setAlpha(0.7f);
-			return img.getScaledCopy(w, h);
+			return img;
 		}
 	},
 
@@ -268,7 +268,7 @@ public enum GameImage {
 		@Override
 		protected Image process_sub(Image img, int w, int h) {
 			img.setAlpha(0.9f);
-			return img.getScaledCopy(w, h);
+			return img;
 		}
 	},
 	MENU_LOGO ("logo", "png", false, true) {
@@ -321,7 +321,7 @@ public enum GameImage {
 		@Override
 		protected Image process_sub(Image img, int w, int h) {
 			img.setAlpha(0.8f);
-			return img.getScaledCopy(w, h);
+			return img;
 		}
 	},
 	DELETE ("delete", "png", false, false) {
