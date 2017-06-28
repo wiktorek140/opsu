@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,10 +33,14 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
+import org.newdawn.slick.util.Log;
 
 /**
  * Download server: http://bloodcat.com/osu/
+ * <p>
+ * <i>This server uses captchas as of March 2017.</i>
  */
 public class BloodcatServer extends DownloadServer {
 	/** Server name. */
@@ -49,7 +53,7 @@ public class BloodcatServer extends DownloadServer {
 	private static final String SEARCH_URL = "http://bloodcat.com/osu/?q=%s&c=b&s=%s&m=0&p=%d&mod=json";//"?q=%s&m=b&c=%s&g=&d=0&s=date&o=0&p=%d&mod=json";
 
 	/** Maximum beatmaps displayed per page. */
-	private static final int PAGE_LIMIT = 40;
+	private static final int PAGE_LIMIT = 61;
 
 	/** Total result count from the last query. */
 	private int totalResults = -1;
@@ -98,6 +102,8 @@ public class BloodcatServer extends DownloadServer {
 			this.totalResults = resultCount;
 		} catch (MalformedURLException | UnsupportedEncodingException e) {
 			ErrorHandler.error(String.format("Problem loading result list for query '%s'.", query), e, true);
+		} catch (JSONException e) {
+			Log.error(e);
 		}
 		return nodes;
 	}

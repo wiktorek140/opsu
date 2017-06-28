@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,12 +20,12 @@ package itdelatrisu.opsu.downloads;
 
 import itdelatrisu.opsu.ErrorHandler;
 import itdelatrisu.opsu.GameImage;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.beatmap.BeatmapSetList;
 import itdelatrisu.opsu.downloads.Download.DownloadListener;
 import itdelatrisu.opsu.downloads.Download.Status;
 import itdelatrisu.opsu.downloads.servers.DownloadServer;
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.ui.Colors;
 import itdelatrisu.opsu.ui.Fonts;
 import itdelatrisu.opsu.ui.UI;
@@ -270,20 +270,21 @@ public class DownloadNode {
 		String url = server.getDownloadURL(beatmapSetID);
 		if (url == null)
 			return;
-		String path = String.format("%s%c%d", Options.getOSZDir(), File.separatorChar, beatmapSetID);
+		String path = String.format("%s%c%d", Options.getImportDir(), File.separatorChar, beatmapSetID);
 		String rename = String.format("%d %s - %s.osz", beatmapSetID, artist, title);
 		Download download = new Download(url, path, rename);
 		download.setListener(new DownloadListener() {
 			@Override
 			public void completed() {
-				UI.sendBarNotification(String.format("Download complete: %s", getTitle()));
+				UI.getNotificationManager().sendNotification(String.format("Download complete: %s", getTitle()), Colors.GREEN);
 			}
 
 			@Override
 			public void error() {
-				UI.sendBarNotification("Download failed due to a connection error.");
+				UI.getNotificationManager().sendNotification("Download failed due to a connection error.", Color.red);
 			}
 		});
+		download.setRequestHeaders(server.getDownloadRequestHeaders());
 		this.download = download;
 		if (Options.useUnicodeMetadata())  // load glyphs
 			Fonts.loadGlyphs(Fonts.LARGE, getTitle());

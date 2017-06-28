@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,16 +22,17 @@ import itdelatrisu.opsu.audio.MusicController;
 import itdelatrisu.opsu.db.DBController;
 import itdelatrisu.opsu.downloads.DownloadList;
 import itdelatrisu.opsu.downloads.Updater;
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.states.ButtonMenu;
 import itdelatrisu.opsu.states.DownloadsMenu;
 import itdelatrisu.opsu.states.Game;
 import itdelatrisu.opsu.states.GamePauseMenu;
 import itdelatrisu.opsu.states.GameRanking;
 import itdelatrisu.opsu.states.MainMenu;
-import itdelatrisu.opsu.states.OptionsMenu;
 import itdelatrisu.opsu.states.SongMenu;
 import itdelatrisu.opsu.states.Splash;
 import itdelatrisu.opsu.ui.UI;
+import itdelatrisu.opsu.video.FFmpeg;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -39,20 +40,19 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.reflect.Field;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.UnknownHostException;
 
 import org.newdawn.slick.GameContainer;
 import org.newdawn.slick.Input;
 import org.newdawn.slick.SlickException;
 import org.newdawn.slick.state.StateBasedGame;
-import org.newdawn.slick.state.transition.FadeInTransition;
 import org.newdawn.slick.state.transition.EasedFadeOutTransition;
+import org.newdawn.slick.state.transition.FadeInTransition;
 import org.newdawn.slick.util.DefaultLogSystem;
 import org.newdawn.slick.util.FileSystemLocation;
 import org.newdawn.slick.util.Log;
 import org.newdawn.slick.util.ResourceLoader;
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.SQLiteException;
 
 /**
  * Main class.
@@ -69,11 +69,7 @@ public class Opsu extends StateBasedGame {
 		STATE_GAME          = 4,
 		STATE_GAMEPAUSEMENU = 5,
 		STATE_GAMERANKING   = 6,
-		STATE_OPTIONSMENU   = 7,
-		STATE_DOWNLOADSMENU = 8;
-
-	/** Server socket for restricting the program to a single instance. */
-	private static ServerSocket SERVER_SOCKET;
+		STATE_DOWNLOADSMENU = 7;
 
 	/**
 	 * Constructor.
@@ -92,7 +88,6 @@ public class Opsu extends StateBasedGame {
 		addState(new Game(STATE_GAME));
 		addState(new GamePauseMenu(STATE_GAMEPAUSEMENU));
 		addState(new GameRanking(STATE_GAMERANKING));
-		addState(new OptionsMenu(STATE_OPTIONSMENU));
 		addState(new DownloadsMenu(STATE_DOWNLOADSMENU));
 	}
 
@@ -107,31 +102,50 @@ public class Opsu extends StateBasedGame {
 		} catch (FileNotFoundException e) {
 			Log.error(e);
 		}
+
+		// set default exception handler
 		Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
 			@Override
 			public void uncaughtException(Thread t, Throwable e) {
 				ErrorHandler.error("** Uncaught Exception! **", e, true);
+				System.exit(1);
 			}
 		});
 
 		// parse configuration file
-		Options.parseOptions();
-
-		// only allow a single instance
 		try {
-			SERVER_SOCKET = new ServerSocket(Options.getPort(), 1, InetAddress.getLocalHost());
-		} catch (UnknownHostException e) {
-			// shouldn't happen
-		} catch (IOException e) {
-			ErrorHandler.error(String.format(
-					"opsu! could not be launched for one of these reasons:\n" +
-					"- An instance of opsu! is already running.\n" +
-					"- Another program is bound to port %d. " +
-					"You can change the port opsu! uses by editing the \"Port\" field in the configuration file.",
-					Options.getPort()), null, false);
-			System.exit(1);
+			Options.parseOptions();
+		} catch (UnsatisfiedLinkError e) {
+			Log.error(e);
 		}
 
+		// initialize databases
+		try {
+			DBController.init();
+		} catch (SQLiteException e) {
+			// probably locked by another instance
+			if (e.getErrorCode() == SQLiteErrorCode.SQLITE_BUSY.code) {
+				Log.error(e);
+				errorAndExit(
+					null,
+					String.format(
+						"%s could not be launched for one of these reasons:\n" +
+						"- An instance of %s is already running.\n" +
+						"- A database is locked for another reason (unlikely). ",
+						OpsuConstants.PROJECT_NAME,
+						OpsuConstants.PROJECT_NAME
+					),
+					false
+				);
+			} else
+				errorAndExit(e, "The databases could not be initialized.", true);
+		} catch (ClassNotFoundException e) {
+			errorAndExit(e, "Could not load sqlite-JDBC driver.", true);
+		} catch (Exception e) {
+			errorAndExit(e, "The databases could not be initialized.", true);
+		}
+
+		// load natives
 		File nativeDir;
 		if (!Utils.isJarRunning() && (
 		    (nativeDir = new File("./target/natives/")).isDirectory() ||
@@ -156,29 +170,24 @@ public class Opsu extends StateBasedGame {
 		} catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e) {
 			Log.warn("Failed to set 'sys_paths' field.", e);
 		}
+		FFmpeg.setNativeDir(nativeDir);
 
 		// set the resource paths
 		ResourceLoader.addResourceLocation(new FileSystemLocation(new File("./res/")));
-
-		// initialize databases
-		try {
-			DBController.init();
-		} catch (UnsatisfiedLinkError e) {
-			errorAndExit(e, "The databases could not be initialized.");
-		}
 
 		// check if just updated
 		if (args.length >= 2)
 			Updater.get().setUpdateInfo(args[0], args[1]);
 
 		// check for updates
+		Updater.get().getCurrentVersion();  // load this for the main menu
 		if (!Options.isUpdaterDisabled()) {
 			new Thread() {
 				@Override
 				public void run() {
 					try {
 						Updater.get().checkForUpdates();
-					} catch (IOException e) {
+					} catch (Exception e) {
 						Log.warn("Check for updates failed.", e);
 					}
 				}
@@ -192,8 +201,13 @@ public class Opsu extends StateBasedGame {
 		try {
 			// loop until force exit
 			while (true) {
+<<<<<<< HEAD
 				Opsu opsu = new Opsu("opsu!");
 				RootContainer app = new RootContainer(opsu);
+=======
+				Opsu opsu = new Opsu(OpsuConstants.PROJECT_NAME);
+				Container app = new Container(opsu);
+>>>>>>> d6284a4ae80e46021da2c718c0e8d4e8b4da7753
 
 				// basic game settings
 				Options.setDisplayMode(app);
@@ -211,7 +225,7 @@ public class Opsu extends StateBasedGame {
 				}
 			}
 		} catch (SlickException e) {
-			errorAndExit(e, "An error occurred while creating the game container.");
+			errorAndExit(e, "An error occurred while creating the game container.", true);
 		}
 	}
 
@@ -235,9 +249,12 @@ public class Opsu extends StateBasedGame {
 				} else
 					songMenu.resetTrackOnLoad();
 			}
+
+			// reset game data
 			if (UI.getCursor().isBeatmapSkinned())
 				UI.getCursor().reset();
 			songMenu.resetGameDataOnLoad();
+
 			this.enterState(Opsu.STATE_SONGMENU, new EasedFadeOutTransition(), new FadeInTransition());
 			return false;
 		}
@@ -262,30 +279,28 @@ public class Opsu extends StateBasedGame {
 
 		// cancel all downloads
 		DownloadList.get().cancelAllDownloads();
-
-		// close server socket
-		if (SERVER_SOCKET != null) {
-			try {
-				SERVER_SOCKET.close();
-			} catch (IOException e) {
-				ErrorHandler.error("Failed to close server socket.", e, false);
-			}
-		}
 	}
 
 	/**
 	 * Throws an error and exits the application with the given message.
 	 * @param e the exception that caused the crash
 	 * @param message the message to display
+	 * @param report whether to ask to report the error
 	 */
-	private static void errorAndExit(Throwable e, String message) {
+	private static void errorAndExit(Throwable e, String message, boolean report) {
 		// JARs will not run properly inside directories containing '!'
 		// http://bugs.java.com/view_bug.do?bug_id=4523159
 		if (Utils.isJarRunning() && Utils.getRunningDirectory() != null &&
 			Utils.getRunningDirectory().getAbsolutePath().indexOf('!') != -1)
-			ErrorHandler.error("JARs cannot be run from some paths containing '!'. Please move or rename the file and try again.", null, false);
+			ErrorHandler.error(
+				"JARs cannot be run from some paths containing the '!' character. " +
+				"Please rename the file/directories and try again.\n\n" +
+				"Path: " + Utils.getRunningDirectory().getAbsolutePath(),
+				null,
+				false
+			);
 		else
-			ErrorHandler.error(message, e, true);
+			ErrorHandler.error(message, e, report);
 		System.exit(1);
 	}
 }

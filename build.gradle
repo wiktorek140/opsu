@@ -7,7 +7,7 @@ apply plugin: 'application'
 import org.apache.tools.ant.filters.*
 
 group = 'itdelatrisu'
-version = '0.12.1'
+version = '0.15.0'
 
 mainClassName = 'itdelatrisu.opsu.Opsu'
 buildDir = new File(rootProject.projectDir, "build/")
@@ -15,6 +15,11 @@ buildDir = new File(rootProject.projectDir, "build/")
 def useXDG = 'false'
 if (hasProperty('XDG')) {
 	useXDG = XDG
+}
+
+def excludeFFmpeg = false
+if (hasProperty('excludeFFmpeg')) {
+	excludeFFmpeg = true
 }
 
 sourceCompatibility = 1.7
@@ -30,31 +35,36 @@ sourceSets {
 
 repositories {
 	mavenCentral()
+	maven {
+		url "$rootProject.projectDir/repo"
+	}
 }
 
 dependencies {
 	compile('org.lwjgl.lwjgl:lwjgl:2.9.3') {
 		exclude group: 'net.java.jinput', module: 'jinput'
 	}
-	compile('org.slick2d:slick2d-core:1.0.1') {
+	compile('org.slick2d:slick2d-core:1.0.2') {
 		exclude group: 'org.lwjgl.lwjgl', module: 'lwjgl'
+		exclude group: 'org.jcraft', module: 'jorbis'
+		exclude group: 'javax.jnlp', module: 'jnlp-api'
 	}
-	compile 'org.jcraft:jorbis:0.0.17'
 	compile 'net.lingala.zip4j:zip4j:1.3.2'
-	compile 'com.googlecode.soundlibs:jlayer:1.0.1-1'
-	compile 'com.googlecode.soundlibs:mp3spi:1.9.5-1'
-	compile 'com.googlecode.soundlibs:tritonus-share:0.3.7-2'
-	compile 'org.xerial:sqlite-jdbc:3.8.10.2'
-	compile 'org.json:json:20140107'
-	compile 'net.java.dev.jna:jna:4.1.0'
-	compile 'net.java.dev.jna:jna-platform:4.1.0'
+	compile 'com.googlecode.soundlibs:jlayer:1.0.1.4'
+	compile('com.googlecode.soundlibs:mp3spi:1.9.5.4') {
+		exclude group: 'com.googlecode.soundlibs', module: 'tritonus-share'
+	}
+	compile 'com.googlecode.soundlibs:tritonus-all:0.3.7.2'
+	compile 'org.xerial:sqlite-jdbc:3.15.1'
+	compile 'org.json:json:20160810'
+	compile 'net.java.dev.jna:jna:4.2.2'
+	compile 'net.java.dev.jna:jna-platform:4.2.2'
 	compile 'org.apache.maven:maven-artifact:3.3.3'
-	compile 'org.apache.commons:commons-compress:1.9'
-	compile 'org.tukaani:xz:1.5'
-	compile 'com.github.jponge:lzma-java:1.3'
+	compile 'org.tukaani:xz:1.6'
+	compile 'net.indiespot:media:0.8.9'
 }
 
-def nativePlatforms = ['windows', 'linux', 'osx']
+def nativePlatforms = ['windows', 'linux', 'osx', 'all']
 nativePlatforms.each { platform -> //noinspection GroovyAssignabilityCheck
 	task "${platform}Natives" {
 		def outputDir = "${buildDir}/natives/"
@@ -100,6 +110,8 @@ jar {
 
 	from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
 	exclude '**/Thumbs.db'
+	if (excludeFFmpeg)
+		exclude 'ffmpeg*'
 
 	outputs.upToDateWhen { false }
 }

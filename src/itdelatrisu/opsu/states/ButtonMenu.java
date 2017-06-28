@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,23 +18,26 @@
 
 package itdelatrisu.opsu.states;
 
+import itdelatrisu.opsu.ErrorHandler;
 import itdelatrisu.opsu.GameImage;
 import itdelatrisu.opsu.GameMod;
 import itdelatrisu.opsu.Opsu;
-import itdelatrisu.opsu.Options;
+import itdelatrisu.opsu.OpsuConstants;
 import itdelatrisu.opsu.ScoreData;
-import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.audio.MusicController;
 import itdelatrisu.opsu.audio.SoundController;
 import itdelatrisu.opsu.audio.SoundEffect;
 import itdelatrisu.opsu.beatmap.BeatmapSetList;
 import itdelatrisu.opsu.beatmap.BeatmapSetNode;
+import itdelatrisu.opsu.downloads.Updater;
 import itdelatrisu.opsu.ui.Fonts;
 import itdelatrisu.opsu.ui.MenuButton;
 import itdelatrisu.opsu.ui.UI;
 import itdelatrisu.opsu.ui.animations.AnimatedValue;
 import itdelatrisu.opsu.ui.animations.AnimationEquation;
 
+import java.awt.Desktop;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,8 +49,8 @@ import org.newdawn.slick.Input;
 import org.newdawn.slick.SlickException;
 import org.newdawn.slick.state.BasicGameState;
 import org.newdawn.slick.state.StateBasedGame;
-import org.newdawn.slick.state.transition.FadeInTransition;
 import org.newdawn.slick.state.transition.EmptyTransition;
+import org.newdawn.slick.state.transition.FadeInTransition;
 
 /**
  * Generic button menu state.
@@ -61,7 +64,9 @@ public class ButtonMenu extends BasicGameState {
 		EXIT (new Button[] { Button.YES, Button.NO }) {
 			@Override
 			public String[] getTitle(GameContainer container, StateBasedGame game) {
-				return new String[] { "Are you sure you want to exit opsu!?" };
+				return new String[] {
+					String.format("Are you sure you want to exit %s?", OpsuConstants.PROJECT_NAME)
+				};
 			}
 
 			@Override
@@ -69,8 +74,8 @@ public class ButtonMenu extends BasicGameState {
 				Button.NO.click(container, game);
 			}
 		},
-		/** The initial beatmap management screen. */
-		BEATMAP (new Button[] { Button.CLEAR_SCORES, Button.DELETE, Button.CANCEL }) {
+		/** The initial beatmap management screen (for a non-"favorite" beatmap). */
+		BEATMAP (new Button[] { Button.CLEAR_SCORES, Button.FAVORITE_ADD, Button.DELETE, Button.CANCEL }) {
 			@Override
 			public String[] getTitle(GameContainer container, StateBasedGame game) {
 				BeatmapSetNode node = ((ButtonMenu) game.getState(Opsu.STATE_BUTTONMENU)).getNode();
@@ -82,12 +87,17 @@ public class ButtonMenu extends BasicGameState {
 			public void leave(GameContainer container, StateBasedGame game) {
 				Button.CANCEL.click(container, game);
 			}
+		},
+		/** The initial beatmap management screen (for a "favorite" beatmap). */
+		BEATMAP_FAVORITE (new Button[] { Button.CLEAR_SCORES, Button.FAVORITE_REMOVE, Button.DELETE, Button.CANCEL }) {
+			@Override
+			public String[] getTitle(GameContainer container, StateBasedGame game) {
+				return BEATMAP.getTitle(container, game);
+			}
 
 			@Override
-			public void scroll(GameContainer container, StateBasedGame game, int newValue) {
-				Input input = container.getInput();
-				if (input.isKeyDown(Input.KEY_LALT) || input.isKeyDown(Input.KEY_RALT))
-					super.scroll(container, game, newValue);
+			public void leave(GameContainer container, StateBasedGame game) {
+				BEATMAP.leave(container, game);
 			}
 		},
 		/** The beatmap deletion screen for a beatmap set with multiple beatmaps. */
@@ -103,11 +113,6 @@ public class ButtonMenu extends BasicGameState {
 			public void leave(GameContainer container, StateBasedGame game) {
 				Button.CANCEL_DELETE.click(container, game);
 			}
-
-			@Override
-			public void scroll(GameContainer container, StateBasedGame game, int newValue) {
-				MenuState.BEATMAP.scroll(container, game, newValue);
-			}
 		},
 		/** The beatmap deletion screen for a single beatmap. */
 		BEATMAP_DELETE_CONFIRM (new Button[] { Button.DELETE_CONFIRM, Button.CANCEL_DELETE }) {
@@ -119,11 +124,6 @@ public class ButtonMenu extends BasicGameState {
 			@Override
 			public void leave(GameContainer container, StateBasedGame game) {
 				Button.CANCEL_DELETE.click(container, game);
-			}
-
-			@Override
-			public void scroll(GameContainer container, StateBasedGame game, int newValue) {
-				MenuState.BEATMAP.scroll(container, game, newValue);
 			}
 		},
 		/** The beatmap reloading confirmation screen. */
@@ -141,11 +141,6 @@ public class ButtonMenu extends BasicGameState {
 			public void leave(GameContainer container, StateBasedGame game) {
 				Button.RELOAD_CANCEL.click(container, game);
 			}
-
-			@Override
-			public void scroll(GameContainer container, StateBasedGame game, int newValue) {
-				MenuState.BEATMAP.scroll(container, game, newValue);
-			}
 		},
 		/** The score management screen. */
 		SCORE (new Button[] { Button.DELETE_SCORE, Button.CLOSE }) {
@@ -157,11 +152,6 @@ public class ButtonMenu extends BasicGameState {
 			@Override
 			public void leave(GameContainer container, StateBasedGame game) {
 				Button.CLOSE.click(container, game);
-			}
-
-			@Override
-			public void scroll(GameContainer container, StateBasedGame game, int newValue) {
-				MenuState.BEATMAP.scroll(container, game, newValue);
 			}
 		},
 		/** The game mod selection screen. */
@@ -257,10 +247,26 @@ public class ButtonMenu extends BasicGameState {
 					}
 				}
 			}
+		},
+		/** The "About" screen. */
+		ABOUT (new Button[] { Button.ABOUT_WEBSITE, Button.ABOUT_REPOSITORY, Button.ABOUT_REPORT, Button.ABOUT_CREDITS, Button.ABOUT_CLOSE }) {
+			@Override
+			public String[] getTitle(GameContainer container, StateBasedGame game) {
+				String version = Updater.get().getCurrentVersion();
+				return new String[] {
+					String.format(
+						"%s %s by %s",
+						OpsuConstants.PROJECT_NAME,
+						(version == null) ? "(unknown version)" : "v" + version,
+						OpsuConstants.PROJECT_AUTHOR
+					),
+					"Click an option below to learn more!"
+				};
+			}
 
 			@Override
-			public void scroll(GameContainer container, StateBasedGame game, int newValue) {
-				MenuState.BEATMAP.scroll(container, game, newValue);
+			public void leave(GameContainer container, StateBasedGame game) {
+				Button.ABOUT_CLOSE.click(container, game);
 			}
 		};
 
@@ -399,16 +405,6 @@ public class ButtonMenu extends BasicGameState {
 		public String[] getTitle(GameContainer container, StateBasedGame game) { return new String[0]; }
 
 		/**
-		 * Processes a mouse wheel movement.
-		 * @param container the game container
-		 * @param game the game
-		 * @param newValue the amount that the mouse wheel moved
-		 */
-		public void scroll(GameContainer container, StateBasedGame game, int newValue) {
-			UI.changeVolume((newValue < 0) ? -1 : 1);
-		}
-
-		/**
 		 * Processes a state enter request.
 		 * @param container the game container
 		 * @param game the game
@@ -429,7 +425,7 @@ public class ButtonMenu extends BasicGameState {
 			for (int i = 0; i < title.length; i++) {
 				// wrap text if too long
 				if (Fonts.LARGE.getWidth(title[i]) > maxLineWidth) {
-					List<String> list = Fonts.wrap(Fonts.LARGE, title[i], maxLineWidth);
+					List<String> list = Fonts.wrap(Fonts.LARGE, title[i], maxLineWidth, false);
 					actualTitle.addAll(list);
 				} else
 					actualTitle.add(title[i]);
@@ -465,6 +461,25 @@ public class ButtonMenu extends BasicGameState {
 				SoundController.playSound(SoundEffect.MENUHIT);
 				BeatmapSetNode node = ((ButtonMenu) game.getState(Opsu.STATE_BUTTONMENU)).getNode();
 				((SongMenu) game.getState(Opsu.STATE_SONGMENU)).doStateActionOnLoad(MenuState.BEATMAP, node);
+				game.enterState(Opsu.STATE_SONGMENU, new EmptyTransition(), new FadeInTransition());
+			}
+		},
+		FAVORITE_ADD ("Add to Favorites", Color.blue) {
+			@Override
+			public void click(GameContainer container, StateBasedGame game) {
+				SoundController.playSound(SoundEffect.MENUHIT);
+				BeatmapSetNode node = ((ButtonMenu) game.getState(Opsu.STATE_BUTTONMENU)).getNode();
+				node.getBeatmapSet().setFavorite(true);
+				game.enterState(Opsu.STATE_SONGMENU, new EmptyTransition(), new FadeInTransition());
+			}
+		},
+		FAVORITE_REMOVE ("Remove from Favorites", Color.blue) {
+			@Override
+			public void click(GameContainer container, StateBasedGame game) {
+				SoundController.playSound(SoundEffect.MENUHIT);
+				BeatmapSetNode node = ((ButtonMenu) game.getState(Opsu.STATE_BUTTONMENU)).getNode();
+				node.getBeatmapSet().setFavorite(false);
+				((SongMenu) game.getState(Opsu.STATE_SONGMENU)).doStateActionOnLoad(MenuState.BEATMAP_FAVORITE);
 				game.enterState(Opsu.STATE_SONGMENU, new EmptyTransition(), new FadeInTransition());
 			}
 		},
@@ -553,6 +568,65 @@ public class ButtonMenu extends BasicGameState {
 					if (mod.isActive())
 						mod.toggle(false);
 				}
+			}
+		},
+		ABOUT_WEBSITE ("Visit Website", Color.cyan) {
+			@Override
+			public void click(GameContainer container, StateBasedGame game) {
+				SoundController.playSound(SoundEffect.MENUHIT);
+				try {
+					Desktop.getDesktop().browse(OpsuConstants.WEBSITE_URI);
+				} catch (Exception e) {
+					UI.getNotificationManager().sendNotification("The web page could not be opened.", Color.red);
+				}
+				game.enterState(Opsu.STATE_MAINMENU, new EmptyTransition(), new FadeInTransition());
+			}
+		},
+		ABOUT_REPOSITORY ("Browse Source Code", Color.green) {
+			@Override
+			public void click(GameContainer container, StateBasedGame game) {
+				SoundController.playSound(SoundEffect.MENUHIT);
+				try {
+					Desktop.getDesktop().browse(OpsuConstants.REPOSITORY_URI);
+				} catch (Exception e) {
+					UI.getNotificationManager().sendNotification("The web page could not be opened.", Color.red);
+				}
+				game.enterState(Opsu.STATE_MAINMENU, new EmptyTransition(), new FadeInTransition());
+			}
+		},
+		ABOUT_REPORT ("Report an Issue", Color.red) {
+			@Override
+			public void click(GameContainer container, StateBasedGame game) {
+				SoundController.playSound(SoundEffect.MENUHIT);
+				StringBuilder sb = new StringBuilder();
+				sb.append("[Type your description here. Feel free to delete the info below if it's not relevant.]\n\n");
+				sb.append("---\n");
+				sb.append(ErrorHandler.getEnvironmentInfoForIssue());
+				URI uri = ErrorHandler.getIssueURI("", sb.toString());
+				try {
+					Desktop.getDesktop().browse(uri);
+				} catch (Exception e) {
+					UI.getNotificationManager().sendNotification("The web page could not be opened.", Color.red);
+				}
+				game.enterState(Opsu.STATE_MAINMENU, new EmptyTransition(), new FadeInTransition());
+			}
+		},
+		ABOUT_CREDITS ("View Credits", Color.magenta) {
+			@Override
+			public void click(GameContainer container, StateBasedGame game) {
+				SoundController.playSound(SoundEffect.MENUHIT);
+				try {
+					Desktop.getDesktop().browse(OpsuConstants.CREDITS_URI);
+				} catch (Exception e) {
+					UI.getNotificationManager().sendNotification("The web page could not be opened.", Color.red);
+				}
+				game.enterState(Opsu.STATE_MAINMENU, new EmptyTransition(), new FadeInTransition());
+			}
+		},
+		ABOUT_CLOSE ("Close", Color.gray) {
+			@Override
+			public void click(GameContainer container, StateBasedGame game) {
+				NO.click(container, game);
 			}
 		};
 
@@ -657,25 +731,18 @@ public class ButtonMenu extends BasicGameState {
 
 	@Override
 	public void mouseWheelMoved(int newValue) {
-		if (menuState != null)
-			menuState.scroll(container, game, newValue);
+		UI.globalMouseWheelMoved(newValue, true);
 	}
 
 	@Override
 	public void keyPressed(int key, char c) {
+		if (UI.globalKeyPressed(key))
+			return;
+
 		switch (key) {
 		case Input.KEY_ESCAPE:
 			if (menuState != null)
 				menuState.leave(container, game);
-			break;
-		case Input.KEY_F7:
-			Options.setNextFPS(container);
-			break;
-		case Input.KEY_F10:
-			Options.toggleMouseDisabled();
-			break;
-		case Input.KEY_F12:
-			Utils.takeScreenShot();
 			break;
 		default:
 			if (menuState != null)

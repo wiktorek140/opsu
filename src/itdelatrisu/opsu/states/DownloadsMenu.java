@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,8 +20,6 @@ package itdelatrisu.opsu.states;
 
 import itdelatrisu.opsu.GameImage;
 import itdelatrisu.opsu.Opsu;
-import itdelatrisu.opsu.Options;
-import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.audio.MusicController;
 import itdelatrisu.opsu.audio.SoundController;
 import itdelatrisu.opsu.audio.SoundEffect;
@@ -32,12 +30,10 @@ import itdelatrisu.opsu.beatmap.OszUnpacker;
 import itdelatrisu.opsu.downloads.Download;
 import itdelatrisu.opsu.downloads.DownloadList;
 import itdelatrisu.opsu.downloads.DownloadNode;
-import itdelatrisu.opsu.downloads.servers.BloodcatServer;
 import itdelatrisu.opsu.downloads.servers.DownloadServer;
-import itdelatrisu.opsu.downloads.servers.HexideServer;
 import itdelatrisu.opsu.downloads.servers.MengSkyServer;
 import itdelatrisu.opsu.downloads.servers.MnetworkServer;
-import itdelatrisu.opsu.downloads.servers.YaSOnlineServer;
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.ui.Colors;
 import itdelatrisu.opsu.ui.DropdownMenu;
 import itdelatrisu.opsu.ui.Fonts;
@@ -47,8 +43,6 @@ import itdelatrisu.opsu.ui.UI;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
 
 import javax.sound.sampled.LineEvent;
 import javax.sound.sampled.LineListener;
@@ -59,6 +53,7 @@ import org.newdawn.slick.Graphics;
 import org.newdawn.slick.Image;
 import org.newdawn.slick.Input;
 import org.newdawn.slick.SlickException;
+import org.newdawn.slick.UnicodeFont;
 import org.newdawn.slick.gui.TextField;
 import org.newdawn.slick.state.BasicGameState;
 import org.newdawn.slick.state.StateBasedGame;
@@ -84,8 +79,8 @@ public class DownloadsMenu extends BasicGameState {
 
 	/** Available beatmap download servers. */
 	private static final DownloadServer[] SERVERS = {
-		new BloodcatServer(), new HexideServer(), new YaSOnlineServer(),
-		new MnetworkServer(), new MengSkyServer()
+		new MengSkyServer(),
+		new MnetworkServer()
 	};
 
 	/** The current list of search results. */
@@ -126,6 +121,9 @@ public class DownloadsMenu extends BasicGameState {
 
 	/** The search textfield. */
 	private TextField search;
+
+	/** The search font. */
+	private UnicodeFont searchFont;
 
 	/**
 	 * Delay timer, in milliseconds, before running another search.
@@ -229,7 +227,7 @@ public class DownloadsMenu extends BasicGameState {
 					focusResult = -1;
 					startResultPos.setPosition(0);
 					if (nodes == null)
-						searchResultString = "An error has occurred.";
+						searchResultString = "An error occurred. See log for details.";
 					else {
 						if (query.isEmpty())
 							searchResultString = "Type to search!";
@@ -275,14 +273,11 @@ public class DownloadsMenu extends BasicGameState {
 		/** Imports all packed beatmaps. */
 		private void importBeatmaps() {
 			// invoke unpacker and parser
-			File[] dirs = OszUnpacker.unpackAllFiles(Options.getOSZDir(), Options.getBeatmapDir());
+			File[] dirs = OszUnpacker.unpackAllFiles(Options.getImportDir(), Options.getBeatmapDir());
 			if (dirs != null && dirs.length > 0) {
 				this.importedNode = BeatmapParser.parseDirectories(dirs);
-				if (importedNode != null) {
-					// send notification
-					UI.sendBarNotification((dirs.length == 1) ? "Imported 1 new song." :
-							String.format("Imported %d new songs.", dirs.length));
-				}
+				if (importedNode == null)
+					UI.getNotificationManager().sendNotification("No Standard beatmaps could be loaded.", Color.red);
 			}
 
 			DownloadList.get().clearDownloads(Download.Status.COMPLETE);
@@ -290,7 +285,6 @@ public class DownloadsMenu extends BasicGameState {
 	}
 
 	// game-related variables
-	private GameContainer container;
 	private StateBasedGame game;
 	private Input input;
 	private final int state;
@@ -302,7 +296,6 @@ public class DownloadsMenu extends BasicGameState {
 	@Override
 	public void init(GameContainer container, StateBasedGame game)
 			throws SlickException {
-		this.container = container;
 		this.game = game;
 		this.input = container.getInput();
 
@@ -315,8 +308,9 @@ public class DownloadsMenu extends BasicGameState {
 		// search
 		searchTimer = SEARCH_DELAY;
 		searchResultString = "Loading data from server...";
+		searchFont = Fonts.DEFAULT;
 		search = new TextField(
-				container, Fonts.DEFAULT, (int) baseX, (int) searchY,
+				container, searchFont, (int) baseX, (int) searchY,
 				(int) searchWidth, Fonts.MEDIUM.getLineHeight()
 		);
 		search.setBackgroundColor(Colors.BLACK_BG_NORMAL);
@@ -418,7 +412,19 @@ public class DownloadsMenu extends BasicGameState {
 		boolean inDropdownMenu = serverMenu.contains(mouseX, mouseY);
 
 		// background
+<<<<<<< HEAD
 		GameImage.SEARCH_BG.getImage().drawFilled(width, height);
+=======
+		Image bg = GameImage.SEARCH_BG.getImage();
+		if (Options.isParallaxEnabled()) {
+			int offset = (int) (height * (GameImage.PARALLAX_SCALE - 1f));
+			float parallaxX = -offset / 2f * (mouseX - width / 2) / (width / 2);
+			float parallaxY = -offset / 2f * (mouseY - height / 2) / (height / 2);
+			bg = bg.getScaledCopy(GameImage.PARALLAX_SCALE);
+			bg.drawCentered(width / 2 + parallaxX, height / 2 + parallaxY);
+		} else
+			bg.drawCentered(width / 2, height / 2);
+>>>>>>> d6284a4ae80e46021da2c718c0e8d4e8b4da7753
 
 		// title
 		Fonts.LARGE.drawString(width * 0.024f, height * 0.03f, "Download Beatmaps!", Color.white);
@@ -519,12 +525,12 @@ public class DownloadsMenu extends BasicGameState {
 			g.setColor(Colors.BLACK_ALPHA);
 			g.fillRect(0, 0, width, height);
 
-			UI.drawLoadingProgress(g);
+			UI.drawLoadingProgress(g, 1f);
 		}
 
 		// back button
 		else
-			UI.getBackButton().draw();
+			UI.getBackButton().draw(g);
 
 		UI.draw(g);
 	}
@@ -663,36 +669,34 @@ public class DownloadsMenu extends BasicGameState {
 								SoundController.stopTrack();
 							} else {
 								// play preview
-								try {
-									final URL url = new URL(serverMenu.getSelectedItem().getPreviewURL(node.getID()));
-									MusicController.pause();
-									new Thread() {
-										@Override
-										public void run() {
-											try {
-												previewID = -1;
-												SoundController.playTrack(url, true, new LineListener() {
+								final String url = serverMenu.getSelectedItem().getPreviewURL(node.getID());
+								MusicController.pause();
+								new Thread() {
+									@Override
+									public void run() {
+										try {
+											previewID = -1;
+											boolean playing = SoundController.playTrack(
+												url,
+												String.format("%d.mp3", node.getID()),
+													new LineListener() {
 													@Override
 													public void update(LineEvent event) {
 														if (event.getType() == LineEvent.Type.STOP) {
-															if (previewID != -1) {
-																SoundController.stopTrack();
+															if (previewID != -1)
 																previewID = -1;
-															}
 														}
 													}
-												});
+												}
+											);
+											if (playing)
 												previewID = node.getID();
-											} catch (SlickException e) {
-												UI.sendBarNotification("Failed to load track preview. See log for details.");
-												Log.error(e);
-											}
+										} catch (SlickException e) {
+											UI.getNotificationManager().sendBarNotification("Failed to load track preview. See log for details.");
+											Log.error(e);
 										}
-									}.start();
-								} catch (MalformedURLException e) {
-									UI.sendBarNotification("Could not load track preview (bad URL).");
-									Log.error(e);
-								}
+									}
+								}.start();
 							}
 							return;
 						}
@@ -710,7 +714,7 @@ public class DownloadsMenu extends BasicGameState {
 								if (!DownloadList.get().contains(node.getID())) {
 									node.createDownload(serverMenu.getSelectedItem());
 									if (node.getDownload() == null)
-										UI.sendBarNotification("The download could not be started.");
+										UI.getNotificationManager().sendBarNotification("The download could not be started.");
 									else {
 										DownloadList.get().addNode(node);
 										node.getDownload().start();
@@ -840,11 +844,8 @@ public class DownloadsMenu extends BasicGameState {
 
 	@Override
 	public void mouseWheelMoved(int newValue) {
-		// change volume
-		if (input.isKeyDown(Input.KEY_LALT) || input.isKeyDown(Input.KEY_RALT)) {
-			UI.changeVolume((newValue < 0) ? -1 : 1);
+		if (UI.globalMouseWheelMoved(newValue, true))
 			return;
-		}
 
 		// block input during beatmap importing
 		if (importThread != null)
@@ -879,6 +880,9 @@ public class DownloadsMenu extends BasicGameState {
 		if (importThread != null && !(key == Input.KEY_ESCAPE || key == Input.KEY_F12))
 			return;
 
+		if (UI.globalKeyPressed(key))
+			return;
+
 		switch (key) {
 		case Input.KEY_ESCAPE:
 			if (importThread != null) {
@@ -910,18 +914,14 @@ public class DownloadsMenu extends BasicGameState {
 				searchQuery.interrupt();
 			resetSearchTimer();
 			break;
-		case Input.KEY_F7:
-			Options.setNextFPS(container);
-			break;
-		case Input.KEY_F10:
-			Options.toggleMouseDisabled();
-			break;
-		case Input.KEY_F12:
-			Utils.takeScreenShot();
-			break;
 		default:
 			// wait for user to finish typing
-			if (Character.isLetterOrDigit(c) || key == Input.KEY_BACK) {
+			if (Character.isLetterOrDigit(c) || key == Input.KEY_BACK || key == Input.KEY_SPACE) {
+				// load glyphs
+				if (c > 255)
+					Fonts.loadGlyphs(searchFont, c);
+
+				// reset search timer
 				searchTimer = 0;
 				pageDir = Page.RESET;
 			}
@@ -947,7 +947,7 @@ public class DownloadsMenu extends BasicGameState {
 		pageDir = Page.RESET;
 		previewID = -1;
 		if (barNotificationOnLoad != null) {
-			UI.sendBarNotification(barNotificationOnLoad);
+			UI.getNotificationManager().sendBarNotification(barNotificationOnLoad);
 			barNotificationOnLoad = null;
 		}
 	}

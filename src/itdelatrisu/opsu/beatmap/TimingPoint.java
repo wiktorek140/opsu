@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,6 +58,14 @@ public class TimingPoint {
 	 * @param line the line to be parsed
 	 */
 	public TimingPoint(String line) {
+		/**
+		 * [TIMING POINT FORMATS]
+		 * Non-inherited:
+		 *   offset,msPerBeat,meter,sampleType,sampleSet,volume,inherited,kiai
+		 *
+		 * Inherited:
+		 *   offset,velocity,meter,sampleType,sampleSet,volume,inherited,kiai
+		 */
 		// TODO: better support for old formats
 		String[] tokens = line.split(",");
 		try {
@@ -98,7 +106,7 @@ public class TimingPoint {
 	/**
 	 * Returns the slider multiplier. [INHERITED]
 	 */
-	public float getSliderMultiplier() { return velocity / -100f; }
+	public float getSliderMultiplier() { return Utils.clamp(-velocity, 10, 1000) / 100f; }
 
 	/**
 	 * Returns the meter.

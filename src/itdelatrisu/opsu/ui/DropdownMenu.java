@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -94,6 +94,9 @@ public class DropdownMenu<E> extends AbstractComponent {
 
 	/** The chevron images. */
 	private Image chevronDown, chevronRight;
+
+	/** Should the next click be blocked? */
+	private boolean blockClick = false;
 
 	/**
 	 * Creates a new dropdown menu.
@@ -199,6 +202,9 @@ public class DropdownMenu<E> extends AbstractComponent {
 	@Override
 	public int getWidth() { return width; }
 
+	/** Sets the width of the dropdown menu. */
+	public void setWidth(int width) { this.width = width; }
+
 	@Override
 	public int getHeight() { return (expanded) ? height : baseHeight; }
 
@@ -263,14 +269,14 @@ public class DropdownMenu<E> extends AbstractComponent {
 		final int cornerRadius = 6;
 		g.setLineWidth(1f);
 		g.setColor((idx == -1) ? highlightColor : backgroundColor);
-		g.fillRoundRect(x, y, width, baseHeight, cornerRadius);
+		g.fillRoundRect((int) x, (int) y, width, baseHeight, cornerRadius);
 		g.setColor(borderColor);
-		g.drawRoundRect(x, y, width, baseHeight, cornerRadius);
+		g.drawRoundRect((int) x, (int) y, width, baseHeight, cornerRadius);
 		if (expanded || t >= 0.0001) {
 			float oldBackgroundAlpha = backgroundColor.a;
 			backgroundColor.a *= t;
 			g.setColor(backgroundColor);
-			g.fillRoundRect(x, y + offsetY, width, (height - offsetY) * t, cornerRadius);
+			g.fillRoundRect((int) x, (int) (y + offsetY), width, (height - offsetY) * t, cornerRadius);
 			backgroundColor.a = oldBackgroundAlpha;
 		}
 		if (idx >= 0 && t >= 0.9999) {
@@ -278,12 +284,12 @@ public class DropdownMenu<E> extends AbstractComponent {
 			float yPos = y + offsetY + (offsetY * idx);
 			int yOff = 0, hOff = 0;
 			if (idx == 0 || idx == items.length - 1) {
-				g.fillRoundRect(x, yPos, width, offsetY, cornerRadius);
+				g.fillRoundRect((int) x, (int) yPos, width, offsetY, cornerRadius);
 				if (idx == 0)
 					yOff = cornerRadius;
 				hOff = cornerRadius;
 			}
-			g.fillRect(x, yPos + yOff, width, offsetY - hOff);
+			g.fillRect((int) x, (int) (yPos + yOff), width, offsetY - hOff);
 		}
 		g.setColor(oldGColor);
 		g.setLineWidth(oldLineWidth);
@@ -327,6 +333,7 @@ public class DropdownMenu<E> extends AbstractComponent {
 		this.expanded = false;
 		this.lastUpdateTime = 0;
 		expandProgress.setTime(0);
+		blockClick = false;
 	}
 
 	@Override
@@ -349,7 +356,19 @@ public class DropdownMenu<E> extends AbstractComponent {
 			this.itemIndex = idx;
 			itemSelected(idx, items[idx]);
 		}
+		blockClick = true;
 		consumeEvent();
+	}
+
+	@Override
+	public void mouseClicked(int button, int x, int y, int clickCount) {
+		if (!active)
+			return;
+
+		if (blockClick) {
+			blockClick = false;
+			consumeEvent();
+		}
 	}
 
 	/**

@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,7 +46,7 @@ public class DummyObject implements GameObject {
 	public void draw(Graphics g, int trackPosition) {}
 
 	@Override
-	public boolean update(boolean overlap, int delta, int mouseX, int mouseY, boolean keyPressed, int trackPosition) {
+	public boolean update(int delta, int mouseX, int mouseY, boolean keyPressed, int trackPosition) {
 		return (trackPosition > hitObject.getTime());
 	}
 

@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,9 +19,11 @@
 package itdelatrisu.opsu.db;
 
 import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.ScoreData;
 import itdelatrisu.opsu.beatmap.Beatmap;
+import itdelatrisu.opsu.options.Options;
+import itdelatrisu.opsu.user.User;
+import itdelatrisu.opsu.user.UserList;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -45,7 +47,7 @@ public class ScoreDB {
 	 * This value should be changed whenever the database format changes.
 	 * Add any update queries to the {@link #getUpdateQueries(int)} method.
 	 */
-	private static final int DATABASE_VERSION = 20150401;
+	private static final int DATABASE_VERSION = 20170201;
 
 	/**
 	 * Returns a list of SQL queries to apply, in order, to update from
@@ -59,6 +61,8 @@ public class ScoreDB {
 			list.add("ALTER TABLE scores ADD COLUMN replay TEXT");
 		if (version < 20150401)
 			list.add("ALTER TABLE scores ADD COLUMN playerName TEXT");
+		if (version < 20170201)
+			list.add(String.format("UPDATE scores SET playerName = '%s' WHERE playerName IS NULL", UserList.DEFAULT_USER_NAME));
 
 		/* add future updates here */
 
@@ -77,17 +81,18 @@ public class ScoreDB {
 	/** Score deletion statement. */
 	private static PreparedStatement deleteSongStmt, deleteScoreStmt;
 
+	/** User-related statements. */
+	private static PreparedStatement setCurrentUserStmt, insertUserStmt, deleteUserStmt;
+
 	// This class should not be instantiated.
 	private ScoreDB() {}
 
 	/**
 	 * Initializes the database connection.
 	 */
-	public static void init() {
+	public static void init() throws SQLException {
 		// create a database connection
 		connection = DBController.createConnection(Options.SCORE_DB.getPath());
-		if (connection == null)
-			return;
 
 		// run any database updates
 		updateDatabase();
@@ -96,42 +101,41 @@ public class ScoreDB {
 		createDatabase();
 
 		// prepare sql statements
-		try {
-			insertStmt = connection.prepareStatement(
-				// TODO: There will be problems if multiple replays have the same
-				// timestamp (e.g. when imported) due to timestamp being the primary key.
-				"INSERT OR IGNORE INTO scores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-			);
-			selectMapStmt = connection.prepareStatement(
-				"SELECT * FROM scores WHERE " +
-				"MID = ? AND title = ? AND artist = ? AND creator = ? AND version = ?"
-			);
-			selectMapSetStmt = connection.prepareStatement(
-				"SELECT * FROM scores WHERE " +
-				"MSID = ? AND title = ? AND artist = ? AND creator = ? ORDER BY version DESC"
-			);
-			deleteSongStmt = connection.prepareStatement(
-				"DELETE FROM scores WHERE " +
-				"MID = ? AND title = ? AND artist = ? AND creator = ? AND version = ?"
-			);
-			deleteScoreStmt = connection.prepareStatement(
-				"DELETE FROM scores WHERE " +
-				"timestamp = ? AND MID = ? AND MSID = ? AND title = ? AND artist = ? AND " +
-				"creator = ? AND version = ? AND hit300 = ? AND hit100 = ? AND hit50 = ? AND " +
-				"geki = ? AND katu = ? AND miss = ? AND score = ? AND combo = ? AND perfect = ? AND mods = ? AND " +
-				"(replay = ? OR (replay IS NULL AND ? IS NULL)) AND " +
-				"(playerName = ? OR (playerName IS NULL AND ? IS NULL))"
-				// TODO: extra playerName checks not needed if name is guaranteed not null
-			);
-		} catch (SQLException e) {
-			ErrorHandler.error("Failed to prepare score statements.", e, true);
-		}
+		insertStmt = connection.prepareStatement(
+			// TODO: There will be problems if multiple replays have the same
+			// timestamp (e.g. when imported) due to timestamp being the primary key.
+			"INSERT OR IGNORE INTO scores VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		);
+		selectMapStmt = connection.prepareStatement(
+			"SELECT * FROM scores WHERE " +
+			"MID = ? AND title = ? AND artist = ? AND creator = ? AND version = ?"
+		);
+		selectMapSetStmt = connection.prepareStatement(
+			"SELECT * FROM scores WHERE " +
+			"MSID = ? AND title = ? AND artist = ? AND creator = ? ORDER BY version DESC"
+		);
+		deleteSongStmt = connection.prepareStatement(
+			"DELETE FROM scores WHERE " +
+			"MID = ? AND title = ? AND artist = ? AND creator = ? AND version = ?"
+		);
+		deleteScoreStmt = connection.prepareStatement(
+			"DELETE FROM scores WHERE " +
+			"timestamp = ? AND MID = ? AND MSID = ? AND title = ? AND artist = ? AND " +
+			"creator = ? AND version = ? AND hit300 = ? AND hit100 = ? AND hit50 = ? AND " +
+			"geki = ? AND katu = ? AND miss = ? AND score = ? AND combo = ? AND perfect = ? AND mods = ? AND " +
+			"(replay = ? OR (replay IS NULL AND ? IS NULL)) AND " +
+			"(playerName = ? OR (playerName IS NULL AND ? IS NULL))"
+			// TODO: extra playerName checks not needed if name is guaranteed not null
+		);
+		setCurrentUserStmt = connection.prepareStatement("INSERT OR REPLACE INTO info VALUES ('user', ?)");
+		insertUserStmt = connection.prepareStatement("INSERT OR REPLACE INTO users VALUES (?, ?, ?, ?, ?, ?)");
+		deleteUserStmt = connection.prepareStatement("DELETE FROM users WHERE name = ?");
 	}
 
 	/**
 	 * Creates the database, if it does not exist.
 	 */
-	private static void createDatabase() {
+	private static void createDatabase() throws SQLException {
 		try (Statement stmt = connection.createStatement()) {
 			String sql =
 				"CREATE TABLE IF NOT EXISTS scores (" +
@@ -147,6 +151,12 @@ public class ScoreDB {
 					"replay TEXT, " +
 					"playerName TEXT"+
 				");" +
+				"CREATE TABLE IF NOT EXISTS users (" +
+					"name TEXT NOT NULL UNIQUE, " +
+					"score INTEGER, accuracy REAL, " +
+					"playsPassed INTEGER, playsTotal INTEGER, " +
+					"icon INTEGER" +
+				");" +
 				"CREATE TABLE IF NOT EXISTS info (" +
 					"key TEXT NOT NULL UNIQUE, value TEXT" +
 				"); " +
@@ -156,8 +166,6 @@ public class ScoreDB {
 			// set the version key, if empty
 			sql = String.format("INSERT OR IGNORE INTO info(key, value) VALUES('version', %d)", DATABASE_VERSION);
 			stmt.executeUpdate(sql);
-		} catch (SQLException e) {
-			ErrorHandler.error("Could not create score database.", e, true);
 		}
 	}
 
@@ -165,7 +173,7 @@ public class ScoreDB {
 	 * Applies any database updates by comparing the current version to the
 	 * stored version.  Does nothing if tables have not been created.
 	 */
-	private static void updateDatabase() {
+	private static void updateDatabase() throws SQLException {
 		try (Statement stmt = connection.createStatement()) {
 			int version = 0;
 
@@ -208,8 +216,6 @@ public class ScoreDB {
 				ps.executeUpdate();
 				ps.close();
 			}
-		} catch (SQLException e) {
-			ErrorHandler.error("Failed to update score database.", e, true);
 		}
 	}
 
@@ -304,16 +310,16 @@ public class ScoreDB {
 	 * @return all scores for the beatmap, or null if any error occurred
 	 */
 	public static ScoreData[] getMapScores(Beatmap beatmap) {
-		return getMapScores(beatmap, null);
+		return getMapScoresExcluding(beatmap, null);
 	}
 
 	/**
 	 * Retrieves the game scores for a beatmap while excluding a score.
 	 * @param beatmap the beatmap
-	 * @param exclude the filename of the score to exclude
+	 * @param exclude the filename (replay string) of the score to exclude
 	 * @return all scores for the beatmap except for exclude, or null if any error occurred
 	 */
-	public static ScoreData[] getMapScores(Beatmap beatmap, String exclude) {
+	public static ScoreData[] getMapScoresExcluding(Beatmap beatmap, String exclude) {
 		if (connection == null)
 			return null;
 
@@ -328,7 +334,7 @@ public class ScoreDB {
 			while (rs.next()) {
 				ScoreData s = new ScoreData(rs);
 				if (s.replayString != null && s.replayString.equals(exclude)) {
-					// dont return this score
+					// don't return this score
 				} else {
 					list.add(s);
 				}
@@ -340,6 +346,7 @@ public class ScoreDB {
 		}
 		return getSortedArray(list);
 	}
+
 	/**
 	 * Retrieves the game scores for a beatmap set.
 	 * @param beatmap the beatmap
@@ -359,7 +366,7 @@ public class ScoreDB {
 			ResultSet rs = selectMapSetStmt.executeQuery();
 
 			List<ScoreData> list = null;
-			String version = "";  // sorted by version, so pass through and check for differences
+			String version = null;  // sorted by version, so pass through and check for differences
 			while (rs.next()) {
 				ScoreData s = new ScoreData(rs);
 				if (!s.version.equals(version)) {
@@ -390,6 +397,105 @@ public class ScoreDB {
 	}
 
 	/**
+	 * Retrieves all users.
+	 * @return a list containing all users
+	 */
+	public static List<User> getUsers() {
+		List<User> users = new ArrayList<User>();
+
+		if (connection == null)
+			return users;
+
+		try (Statement stmt = connection.createStatement()) {
+			String sql = "SELECT * FROM users";
+			ResultSet rs = stmt.executeQuery(sql);
+			while (rs.next())
+				users.add(new User(
+					rs.getString(1), rs.getLong(2), rs.getDouble(3),
+					rs.getInt(4), rs.getInt(5), rs.getInt(6)
+				));
+			rs.close();
+		} catch (SQLException e) {
+			ErrorHandler.error("Failed to read users from database.", e, true);
+		}
+		return users;
+	}
+
+	/**
+	 * Retrieves the current user.
+	 * @return the current user's name, or null if not set.
+	 */
+	public static String getCurrentUser() {
+		if (connection == null)
+			return null;
+
+		try (Statement stmt = connection.createStatement()) {
+			String sql = "SELECT value FROM info WHERE key = 'user'";
+			ResultSet rs = stmt.executeQuery(sql);
+			String name = (rs.next()) ? rs.getString(1) : null;
+			rs.close();
+			return name;
+		} catch (SQLException e) {
+			ErrorHandler.error("Failed to read current user from database.", e, true);
+			return null;
+		}
+	}
+
+	/**
+	 * Sets the current user.
+	 * @param user the user's name
+	 */
+	public static void setCurrentUser(String user) {
+		if (connection == null)
+			return;
+
+		try {
+			setCurrentUserStmt.setString(1, user);
+			setCurrentUserStmt.executeUpdate();
+		} catch (SQLException e) {
+			ErrorHandler.error("Failed to set current user in database.", e, true);
+		}
+	}
+
+	/**
+	 * Updates a user entry, or creates one if it does not exist.
+	 * @param user the user
+	 */
+	public static void updateUser(User user) {
+		if (connection == null)
+			return;
+
+		try {
+			insertUserStmt.setString(1, user.getName());
+			insertUserStmt.setLong(2, user.getScore());
+			insertUserStmt.setDouble(3, user.getAccuracy());
+			insertUserStmt.setInt(4, user.getPassedPlays());
+			insertUserStmt.setInt(5, user.getTotalPlays());
+			insertUserStmt.setInt(6, user.getIconId());
+			insertUserStmt.executeUpdate();
+		} catch (SQLException e) {
+			ErrorHandler.error("Failed to update user in database.", e, true);
+			return;
+		}
+	}
+
+	/**
+	 * Deletes a user.
+	 * @param user the user's name
+	 */
+	public static void deleteUser(String user) {
+		if (connection == null)
+			return;
+
+		try {
+			deleteUserStmt.setString(1, user);
+			deleteUserStmt.executeUpdate();
+		} catch (SQLException e) {
+			ErrorHandler.error("Failed to delete user from database.", e, true);
+		}
+	}
+
+	/**
 	 * Closes the connection to the database.
 	 */
 	public static void closeConnection() {
@@ -400,6 +506,11 @@ public class ScoreDB {
 			insertStmt.close();
 			selectMapStmt.close();
 			selectMapSetStmt.close();
+			deleteSongStmt.close();
+			deleteScoreStmt.close();
+			setCurrentUserStmt.close();
+			insertUserStmt.close();
+			deleteUserStmt.close();
 			connection.close();
 			connection = null;
 		} catch (SQLException e) {

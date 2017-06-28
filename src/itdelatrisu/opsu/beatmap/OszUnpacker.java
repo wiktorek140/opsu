@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,16 +18,14 @@
 
 package itdelatrisu.opsu.beatmap;
 
-import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
+import itdelatrisu.opsu.Utils;
+import itdelatrisu.opsu.options.Options;
+import itdelatrisu.opsu.ui.UI;
 
 import java.io.File;
 import java.io.FilenameFilter;
 import java.util.ArrayList;
 import java.util.List;
-
-import net.lingala.zip4j.core.ZipFile;
-import net.lingala.zip4j.exception.ZipException;
 
 /**
  * Unpacker for OSZ (ZIP) archives.
@@ -46,8 +44,7 @@ public class OszUnpacker {
 	 * Invokes the unpacker for each OSZ archive in a root directory.
 	 * @param root the root directory
 	 * @param dest the destination directory
-	 * @return an array containing the new (unpacked) directories, or null
-	 *         if no OSZs found
+	 * @return an array containing the new (unpacked) directories
 	 */
 	public static File[] unpackAllFiles(File root, File dest) {
 		List<File> dirs = new ArrayList<File>();
@@ -74,7 +71,7 @@ public class OszUnpacker {
 			File songDir = new File(dest, dirName);
 			if (!songDir.isDirectory()) {
 				songDir.mkdir();
-				unzip(file, songDir);
+				Utils.unzip(file, songDir);
 				file.delete();  // delete the OSZ when finished
 				dirs.add(songDir);
 			}
@@ -84,22 +81,13 @@ public class OszUnpacker {
 
 		fileIndex = -1;
 		files = null;
-		return dirs.toArray(new File[dirs.size()]);
-	}
 
-	/**
-	 * Extracts the contents of a ZIP archive to a destination.
-	 * @param file the ZIP archive
-	 * @param dest the destination directory
-	 */
-	private static void unzip(File file, File dest) {
-		try {
-			ZipFile zipFile = new ZipFile(file);
-			zipFile.extractAll(dest.getAbsolutePath());
-		} catch (ZipException e) {
-			ErrorHandler.error(String.format("Failed to unzip file %s to dest %s.",
-					file.getAbsolutePath(), dest.getAbsolutePath()), e, false);
+		if (!dirs.isEmpty()) {
+			String text = String.format("Imported %d new beatmap pack%s.", dirs.size(), dirs.size() == 1 ? "" : "s");
+			UI.getNotificationManager().sendNotification(text);
 		}
+
+		return dirs.toArray(new File[dirs.size()]);
 	}
 
 	/**

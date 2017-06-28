@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -100,7 +100,7 @@ public class SkinLoader {
 								if (tokens[1].equalsIgnoreCase("latest"))
 									skin.version = Skin.LATEST_VERSION;
 								else
-									skin.version = Integer.parseInt(tokens[1]);
+									skin.version = Float.parseFloat(tokens[1]);
 								break;
 							case "SliderBallFlip":
 								skin.sliderBallFlip = Utils.parseBoolean(tokens[1]);

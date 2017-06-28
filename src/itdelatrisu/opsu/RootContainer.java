@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,12 +19,17 @@
 package itdelatrisu.opsu;
 
 import itdelatrisu.opsu.audio.MusicController;
+import itdelatrisu.opsu.audio.SoundController;
 import itdelatrisu.opsu.beatmap.Beatmap;
+import itdelatrisu.opsu.beatmap.BeatmapGroup;
 import itdelatrisu.opsu.beatmap.BeatmapSetList;
+import itdelatrisu.opsu.beatmap.BeatmapSortOrder;
 import itdelatrisu.opsu.beatmap.BeatmapWatchService;
 import itdelatrisu.opsu.downloads.DownloadList;
 import itdelatrisu.opsu.downloads.Updater;
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.render.CurveRenderState;
+import itdelatrisu.opsu.render.LegacyCurveRenderState;
 import itdelatrisu.opsu.ui.UI;
 
 import org.lwjgl.opengl.Display;
@@ -36,9 +41,18 @@ import org.newdawn.slick.opengl.InternalTextureLoader;
 /**
  * AppGameContainer extension that sends critical errors to ErrorHandler.
  */
+<<<<<<< HEAD:src/itdelatrisu/opsu/RootContainer.java
 public class RootContainer extends AppGameContainer {
 	/** SlickException causing game failure. */
 	protected SlickException e = null;
+=======
+public class Container extends AppGameContainer {
+	/** Exception causing game failure. */
+	protected Exception e = null;
+
+	/** Whether the game is running with software-only OpenGL context. */
+	private boolean softwareMode = false;
+>>>>>>> d6284a4ae80e46021da2c718c0e8d4e8b4da7753:src/itdelatrisu/opsu/Container.java
 
 	/**
 	 * Create a new container wrapping a game
@@ -66,20 +80,28 @@ public class RootContainer extends AppGameContainer {
 	@Override
 	public void start() throws SlickException {
 		try {
-			setup();
+			runSetup();
 			getDelta();
 			while (running())
 				gameLoop();
-		} finally {
-			// destroy the game container
-			close_sub();
-			destroy();
+		} catch (Exception e) {
+			this.e = e;
+		}
 
-			// report any critical errors
-			if (e != null) {
-				ErrorHandler.error(null, e, true);
-				e = null;
-			}
+		// destroy the game container
+		try {
+			close_sub();
+		} catch (Exception e) {
+			if (this.e == null)  // suppress if caused by a previous exception
+				this.e = e;
+		}
+		destroy();
+
+		// report any critical errors
+		if (e != null) {
+			ErrorHandler.error(null, e, true);
+			e = null;
+			forceExit = true;
 		}
 
 		if (forceExit) {
@@ -87,6 +109,28 @@ public class RootContainer extends AppGameContainer {
 			System.exit(0);
 		}
 	}
+
+	/**
+	 * Sets up the environment.
+	 */
+	private void runSetup() throws SlickException {
+		try {
+			setup();
+		} catch (SlickException e) {
+			if (!Display.isCreated()) {
+				// try running in software mode
+				System.setProperty("org.lwjgl.opengl.Display.allowSoftwareOpenGL", "true");
+				softwareMode = true;
+				setup();
+			} else
+				throw e;
+		}
+	}
+
+	/**
+	 * Returns whether the game is running with software-only OpenGL context.
+	 */
+	public boolean isSoftwareMode() { return softwareMode; }
 
 	@Override
 	protected void gameLoop() throws SlickException {
@@ -131,17 +175,26 @@ public class RootContainer extends AppGameContainer {
 		// prevent loading tracks from re-initializing OpenAL
 		MusicController.reset();
 
+		// stop any playing track
+		SoundController.stopTrack();
+
 		// reset BeatmapSetList data
+		BeatmapGroup.set(BeatmapGroup.ALL);
+		BeatmapSortOrder.set(BeatmapSortOrder.TITLE);
 		if (BeatmapSetList.get() != null)
 			BeatmapSetList.get().reset();
 
 		// delete OpenGL objects involved in the Curve rendering
 		CurveRenderState.shutdown();
+		LegacyCurveRenderState.shutdown();
 
 		// destroy watch service
 		if (!Options.isWatchServiceEnabled())
 			BeatmapWatchService.destroy();
 		BeatmapWatchService.removeListeners();
+
+		// delete temporary directory
+		Utils.deleteDirectory(Options.TEMP_DIR);
 	}
 
 	@Override

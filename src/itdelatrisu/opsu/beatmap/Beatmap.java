@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,8 @@
 
 package itdelatrisu.opsu.beatmap;
 
-import itdelatrisu.opsu.Options;
+import itdelatrisu.opsu.GameImage;
+import itdelatrisu.opsu.options.Options;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -67,6 +68,21 @@ public class Beatmap implements Comparable<Beatmap> {
 
 	/** The star rating. */
 	public double starRating = -1;
+
+	/** The timestamp this beatmap was first loaded. */
+	public long dateAdded = 0;
+
+	/** Whether this beatmap is marked as a "favorite". */
+	public boolean favorite = false;
+
+	/** Total number of times this beatmap has been played. */
+	public int playCount = 0;
+
+	/** The last time this beatmap was played (timestamp). */
+	public long lastPlayed = 0;
+
+	/** The local music offset. */
+	public int localMusicOffset = 0;
 
 	/**
 	 * [General]
@@ -182,7 +198,10 @@ public class Beatmap implements Comparable<Beatmap> {
 	public File bg;
 
 	/** Background video file. */
-//	public File video;
+	public File video;
+
+	/** Background video offset time. */
+	public int videoOffset = 0;
 
 	/** All break periods (start time, end time, ...). */
 	public ArrayList<Integer> breaks;
@@ -305,14 +324,31 @@ public class Beatmap implements Comparable<Beatmap> {
 	}
 
 	/**
+	 * Returns whether there is a loaded beatmap background image.
+	 * @return true if an image is currently available
+	 */
+	public boolean hasLoadedBackground() {
+		if (bg == null)
+			return false;
+		ImageLoader imageLoader = bgImageCache.get(bg);
+		return (imageLoader != null && imageLoader.getImage() != null);
+	}
+
+	/**
 	 * Draws the beatmap background image.
 	 * @param width the container width
 	 * @param height the container height
+	 * @param offsetX the x offset (from the screen center)
+	 * @param offsetY the y offset (from the screen center)
 	 * @param alpha the alpha value
 	 * @param fill if true, fill the whole screen; otherwise fit to screen; aspect ratio always be kept
 	 * @return true if successful, false if any errors were produced
 	 */
+<<<<<<< HEAD
 	public boolean drawBackground(int width, int height, float alpha, boolean fill) {
+=======
+	public boolean drawBackground(int width, int height, float offsetX, float offsetY, float alpha, boolean stretch) {
+>>>>>>> d6284a4ae80e46021da2c718c0e8d4e8b4da7753
 		if (bg == null)
 			return false;
 
@@ -324,6 +360,7 @@ public class Beatmap implements Comparable<Beatmap> {
 		if (bgImage == null)
 			return true;
 
+<<<<<<< HEAD
 		float saved = bgImage.getAlpha();
 		bgImage.setAlpha(alpha);
 		if (fill)
@@ -331,6 +368,33 @@ public class Beatmap implements Comparable<Beatmap> {
 		else
 			bgImage.drawFitted(width, height);
 		bgImage.setAlpha(saved);
+=======
+		int swidth = width;
+		int sheight = height;
+		if (!stretch) {
+			// fit image to screen
+			if (bgImage.getWidth() / (float) bgImage.getHeight() > width / (float) height)  // x > y
+				sheight = (int) (width * bgImage.getHeight() / (float) bgImage.getWidth());
+			else
+				swidth = (int) (height * bgImage.getWidth() / (float) bgImage.getHeight());
+		} else {
+			// fill screen while maintaining aspect ratio
+			if (bgImage.getWidth() / (float) bgImage.getHeight() > width / (float) height)  // x > y
+				swidth = (int) (height * bgImage.getWidth() / (float) bgImage.getHeight());
+			else
+				sheight = (int) (width * bgImage.getHeight() / (float) bgImage.getWidth());
+		}
+		if (Options.isParallaxEnabled()) {
+			swidth = (int) (swidth * GameImage.PARALLAX_SCALE);
+			sheight = (int) (sheight * GameImage.PARALLAX_SCALE);
+		}
+		bgImage = bgImage.getScaledCopy(swidth, sheight);
+		bgImage.setAlpha(alpha);
+		if (!Options.isParallaxEnabled() && offsetX == 0f && offsetY == 0f)
+			bgImage.drawCentered(width / 2, height / 2);
+		else
+			bgImage.drawCentered(width / 2 + offsetX, height / 2 + offsetY);
+>>>>>>> d6284a4ae80e46021da2c718c0e8d4e8b4da7753
 		return true;
 	}
 
@@ -489,5 +553,26 @@ public class Beatmap implements Comparable<Beatmap> {
 
 		String[] rgb = s.split(",");
 		this.sliderBorder = new Color(new Color(Integer.parseInt(rgb[0]), Integer.parseInt(rgb[1]), Integer.parseInt(rgb[2])));
+	}
+
+	/**
+	 * Increments the play counter and last played time.
+	 */
+	public void incrementPlayCounter() {
+		this.playCount++;
+		this.lastPlayed = System.currentTimeMillis();
+	}
+
+	/**
+	 * Copies non-parsed fields from this beatmap into another beatmap.
+	 * @param target the target beatmap
+	 */
+	public void copyAdditionalFields(Beatmap target) {
+		target.starRating = starRating;
+		target.dateAdded = dateAdded;
+		target.favorite = favorite;
+		target.playCount = playCount;
+		target.lastPlayed = lastPlayed;
+		target.localMusicOffset = localMusicOffset;
 	}
 }
