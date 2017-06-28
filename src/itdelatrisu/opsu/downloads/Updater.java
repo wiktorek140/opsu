@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,9 +19,11 @@
 package itdelatrisu.opsu.downloads;
 
 import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
+import itdelatrisu.opsu.OpsuConstants;
 import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.downloads.Download.DownloadListener;
+import itdelatrisu.opsu.options.Options;
+import itdelatrisu.opsu.ui.Colors;
 import itdelatrisu.opsu.ui.UI;
 
 import java.io.File;
@@ -36,6 +38,7 @@ import java.util.Locale;
 import java.util.Properties;
 
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
+import org.newdawn.slick.Color;
 import org.newdawn.slick.util.Log;
 import org.newdawn.slick.util.ResourceLoader;
 
@@ -47,7 +50,10 @@ public class Updater {
 	private static Updater updater = new Updater();
 
 	/** The exit confirmation message. */
-	public static final String EXIT_CONFIRMATION = "An opsu! update is being downloaded.\nAre you sure you want to quit opsu!?";
+	public static final String EXIT_CONFIRMATION = String.format(
+		"A new update is being downloaded.\nAre you sure you want to quit %s?",
+		OpsuConstants.PROJECT_NAME
+	);
 
 	/**
 	 * Returns the single instance of this class.
@@ -179,16 +185,33 @@ public class Updater {
 	public String updatedToVersion() { return (justUpdated()) ? updatedToVersion : null; }
 
 	/**
+	 * Loads and returns the current program version.
+	 * @return the version string, or {@code null} if unable to determine the version
+	 */
+	public String getCurrentVersion() {
+		if (currentVersion == null) {
+			try {
+				Properties props = new Properties();
+				props.load(ResourceLoader.getResourceAsStream(Options.VERSION_FILE));
+				if ((currentVersion = getVersion(props)) == null)
+					return null;
+			} catch (IOException e) {
+				return null;
+			}
+		}
+		return currentVersion.toString();
+	}
+
+	/**
 	 * Returns the version from a set of properties.
 	 * @param props the set of properties
 	 * @return the version, or null if not found
 	 */
 	private DefaultArtifactVersion getVersion(Properties props) {
 		String version = props.getProperty("version");
-		if (version == null || version.equals("${pom.version}")) {
-			status = Status.INTERNAL_ERROR;
+		if (version == null || version.equals("${pom.version}"))
 			return null;
-		} else
+		else
 			return new DefaultArtifactVersion(version);
 	}
 
@@ -203,26 +226,35 @@ public class Updater {
 		status = Status.CHECKING;
 
 		// get current version
-		Properties props = new Properties();
-		props.load(ResourceLoader.getResourceAsStream(Options.VERSION_FILE));
-		if ((currentVersion = getVersion(props)) == null)
-			return;
+		if (currentVersion == null) {
+			Properties props = new Properties();
+			props.load(ResourceLoader.getResourceAsStream(Options.VERSION_FILE));
+			if ((currentVersion = getVersion(props)) == null) {
+				status = Status.INTERNAL_ERROR;
+				return;
+			}
+		}
 
 		// get latest version
 		String s = null;
 		try {
-			s = Utils.readDataFromUrl(new URL(Options.VERSION_REMOTE));
+			s = Utils.readDataFromUrl(new URL(OpsuConstants.VERSION_REMOTE));
 		} catch (UnknownHostException e) {
-			Log.warn(String.format("Check for updates failed. Please check your internet connection, or your connection to %s.", Options.VERSION_REMOTE));
+			Log.warn(String.format(
+				"Check for updates failed. Please check your internet connection, or your connection to %s.",
+				OpsuConstants.VERSION_REMOTE)
+			);
 		}
 		if (s == null) {
 			status = Status.CONNECTION_ERROR;
 			return;
 		}
-		props = new Properties();
+		Properties props = new Properties();
 		props.load(new StringReader(s));
-		if ((latestVersion = getVersion(props)) == null)
+		if ((latestVersion = getVersion(props)) == null) {
+			status = Status.INTERNAL_ERROR;
 			return;
+		}
 
 		// compare versions
 		if (latestVersion.compareTo(currentVersion) <= 0)
@@ -242,13 +274,13 @@ public class Updater {
 				@Override
 				public void completed() {
 					status = Status.UPDATE_DOWNLOADED;
-					UI.sendBarNotification("Update has finished downloading.");
+					UI.getNotificationManager().sendNotification("Update has finished downloading.", Colors.GREEN);
 				}
 
 				@Override
 				public void error() {
 					status = Status.CONNECTION_ERROR;
-					UI.sendBarNotification("Update failed due to a connection error.");
+					UI.getNotificationManager().sendNotification("Update failed due to a connection error.", Color.red);
 				}
 			});
 		}

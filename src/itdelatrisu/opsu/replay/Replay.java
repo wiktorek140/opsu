@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,12 +19,12 @@
 package itdelatrisu.opsu.replay;
 
 import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.ScoreData;
 import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.beatmap.Beatmap;
 import itdelatrisu.opsu.io.OsuReader;
 import itdelatrisu.opsu.io.OsuWriter;
+import itdelatrisu.opsu.options.Options;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
@@ -41,10 +41,10 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import org.apache.commons.compress.compressors.lzma.LZMACompressorInputStream;
 import org.newdawn.slick.util.Log;
-
-import lzma.streams.LzmaOutputStream;
+import org.tukaani.xz.LZMA2Options;
+import org.tukaani.xz.LZMAInputStream;
+import org.tukaani.xz.LZMAOutputStream;
 
 /**
  * Captures osu! replay data.
@@ -200,7 +200,7 @@ public class Replay {
 		// LZMA-encoded replay data
 		this.replayLength = reader.readInt();
 		if (replayLength > 0) {
-			LZMACompressorInputStream lzma = new LZMACompressorInputStream(reader.getInputStream());
+			LZMAInputStream lzma = new LZMAInputStream(reader.getInputStream());
 			String[] replayFrames = Utils.convertStreamToString(lzma).split(",");
 			lzma.close();
 			List<ReplayFrame> replayFrameList = new ArrayList<ReplayFrame>(replayFrames.length);
@@ -305,12 +305,16 @@ public class Replay {
 
 					// life data
 					StringBuilder sb = new StringBuilder();
-					if (lifeFrames != null) {
+					if (lifeFrames != null && lifeFrames.length > 0) {
 						NumberFormat nf = new DecimalFormat("##.##");
+						int lastFrameTime = 0;
 						for (int i = 0; i < lifeFrames.length; i++) {
 							LifeFrame frame = lifeFrames[i];
-							sb.append(String.format("%d|%s,",
-									frame.getTime(), nf.format(frame.getPercentage())));
+							if (i > 0 && frame.getTime() - lastFrameTime < LifeFrame.SAMPLE_INTERVAL)
+								continue;
+
+							sb.append(String.format("%d|%s,", frame.getTime(), nf.format(frame.getHealth())));
+							lastFrameTime = frame.getTime();
 						}
 					}
 					writer.write(sb.toString());
@@ -338,14 +342,13 @@ public class Replay {
 
 						// compress data
 						ByteArrayOutputStream bout = new ByteArrayOutputStream();
-						LzmaOutputStream compressedOut = new LzmaOutputStream.Builder(bout).useMediumDictionarySize().build();
+						LZMAOutputStream lzma = new LZMAOutputStream(bout, new LZMA2Options(), bytes.length);
 						try {
-							compressedOut.write(bytes);
+							lzma.write(bytes);
 						} catch (IOException e) {
-							// possible OOM: https://github.com/jponge/lzma-java/issues/9
-							ErrorHandler.error("LZMA compression failed (possible out-of-memory error).", e, true);
+							ErrorHandler.error("LZMA encoding of the reply frames failed.", e, true);
 						}
-						compressedOut.close();
+						lzma.close();
 						bout.close();
 
 						// write to file

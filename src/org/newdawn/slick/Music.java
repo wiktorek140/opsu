@@ -320,7 +320,9 @@ public class Music {
 				volume = 0.0f;
 			if (volume > 1.0f)
 				volume = 1.0f;
-	
+
+			fadeTime = 0;
+			pitchTime = 0;
 			playing = true;
 			currentMusic = this;
 			sound.playAsMusic(pitch, volume, loop);
@@ -455,7 +457,7 @@ public class Music {
 		}
 		if (fadeTime > 0) {
 			fadeTime -= delta;
-			if (fadeTime < 0) {
+			if (fadeTime <= 0) {
 				fadeTime = 0;
 				if (stopAfterFade) {
 					stop();

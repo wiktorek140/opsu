@@ -1,3 +1,21 @@
+/*
+ * opsu! - an open-source osu! client
+ * Copyright (C) 2014-2017 Jeffrey Han
+ *
+ * opsu! is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * opsu! is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with opsu!.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package itdelatrisu.opsu.audio;
 
 import itdelatrisu.opsu.ErrorHandler;
@@ -10,6 +28,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
+import javax.sound.sampled.DataLine;
 import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineListener;
 import javax.sound.sampled.LineUnavailableException;
@@ -122,12 +141,32 @@ public class MultiClip {
 			FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
 			float dB = (float) (Math.log(volume) / Math.log(10.0) * 20.0);
 			gainControl.setValue(dB);
+		} else if (clip.isControlSupported(FloatControl.Type.VOLUME)) {
+			// The docs don't mention what unit "volume" is supposed to be,
+			// but for PulseAudio it seems to be amplitude
+			FloatControl volumeControl = (FloatControl) clip.getControl(FloatControl.Type.VOLUME);
+			float amplitude = (float) Math.sqrt(volume) * volumeControl.getMaximum();
+			volumeControl.setValue(amplitude);
 		}
 
 		if (listener != null)
 			clip.addLineListener(listener);
 		clip.setFramePosition(0);
 		clip.start();
+	}
+
+	/**
+	 * Stops the clip, if active.
+	 */
+	public void stop() {
+		try {
+			Clip clip = getClip();
+			if (clip == null)
+				return;
+
+			if (clip.isActive())
+				clip.stop();
+		} catch (LineUnavailableException e) {}
 	}
 
 	/**
@@ -149,7 +188,7 @@ public class MultiClip {
 		// search for existing stopped clips
 		for (Iterator<Clip> iter = clips.iterator(); iter.hasNext();) {
 			Clip c = iter.next();
-			if (!c.isRunning()) {
+			if (!c.isRunning() && !c.isActive()) {
 				iter.remove();
 				clips.add(c);
 				return c;
@@ -166,9 +205,16 @@ public class MultiClip {
 			clips.add(c);
 		} else {
 			// create a new clip
-			c = AudioSystem.getClip();
+			// NOTE: AudioSystem.getClip() doesn't work on some Linux setups.
+			DataLine.Info info = new DataLine.Info(Clip.class, format);
+			c = (Clip) AudioSystem.getLine(info);
 			if (format != null)
 				c.open(format, audioData, 0, audioData.length);
+
+			// fix PulseAudio issues (hacky, but can't do an instanceof check)
+			if (c.getClass().getSimpleName().equals("PulseAudioClip"))
+				c.addLineListener(new PulseAudioFixerListener(c));
+
 			clips.add(c);
 			if (clips.size() != 1)
 				extraClips++;

@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -249,7 +249,7 @@ public class ScoreData implements Comparable<ScoreData> {
 	 */
 	public void draw(Graphics g, float position, int rank, long prevScore, boolean focus, float t) {
 		float x = baseX - buttonWidth * (1 - AnimationEquation.OUT_BACK.calc(t)) / 2.5f;
-		float textX = x + buttonWidth * 0.24f;
+		float rankX = x + buttonWidth * 0.04f;
 		float edgeX = x + buttonWidth * 0.98f;
 		float y = baseY + position;
 		float midY = y + buttonHeight / 2f;
@@ -260,37 +260,44 @@ public class ScoreData implements Comparable<ScoreData> {
 		c.a = alpha;
 
 		// rectangle outline
-		Color rectColor = (focus) ? Colors.BLACK_BG_FOCUS : Colors.BLACK_BG_NORMAL;
+		g.setLineWidth(1f);
+		Color rectColor = (focus) ? Colors.BLACK_BG_HOVER : Colors.BLACK_BG_NORMAL;
 		float oldRectAlpha = rectColor.a;
 		rectColor.a *= AnimationEquation.IN_QUAD.calc(alpha);
 		g.setColor(rectColor);
-		g.fillRect(x, y, buttonWidth, buttonHeight);
+		g.fillRect(x + 1, y + 1, buttonWidth - 1, buttonHeight - 1);
+		rectColor.a *= 1.25f;
+		g.setColor(rectColor);
+		g.drawRect(x, y, buttonWidth, buttonHeight);
 		rectColor.a = oldRectAlpha;
 
 		// rank
 		if (focus) {
 			Fonts.LARGE.drawString(
-					x + buttonWidth * 0.04f,
-					y + (buttonHeight - Fonts.LARGE.getLineHeight()) / 2f,
-					Integer.toString(rank + 1), c
+				rankX, y + (buttonHeight - Fonts.LARGE.getLineHeight()) / 2f,
+				Integer.toString(rank + 1), c
 			);
 		}
 
 		// grade image
+		float gradeX = rankX + Fonts.LARGE.getWidth("###");
 		Image img = getGrade().getMenuImage();
 		img.setAlpha(alpha);
-		img.drawCentered(x + buttonWidth * 0.15f, midY);
+		img.draw(gradeX, midY - img.getHeight() / 2f);
 		img.setAlpha(1f);
 
-		// score
-		float textOffset = (buttonHeight - Fonts.MEDIUM.getLineHeight() - Fonts.SMALL.getLineHeight()) / 2f;
-		Fonts.MEDIUM.drawString(textX, y + textOffset,
-				String.format("Score: %s (%dx)", NumberFormat.getNumberInstance().format(score), combo), c);
+		// player
+		float textX = gradeX + img.getWidth() * 1.2f;
+		float textOffset = (buttonHeight - Fonts.LARGE.getLineHeight() - Fonts.MEDIUM.getLineHeight()) / 2f;
+		if (playerName != null)
+			Fonts.LARGE.drawString(textX, y + textOffset, playerName);
+		textOffset += Fonts.LARGE.getLineHeight() - 4;
 
-		// hit counts (custom: osu! shows user instead, above score)
-		String player = (playerName == null) ? "" : String.format("  (%s)", playerName);
-		Fonts.SMALL.drawString(textX, y + textOffset + Fonts.MEDIUM.getLineHeight(),
-				String.format("300:%d  100:%d  50:%d  Miss:%d%s", hit300, hit100, hit50, miss, player), c);
+		// score
+		Fonts.MEDIUM.drawString(
+			textX, y + textOffset,
+			String.format("Score: %s (%dx)", NumberFormat.getNumberInstance().format(score), combo), c
+		);
 
 		// mods
 		StringBuilder sb = new StringBuilder();
@@ -312,7 +319,7 @@ public class ScoreData implements Comparable<ScoreData> {
 
 		// score difference
 		String diff = (prevScore < 0 || score < prevScore) ?
-				"-" : String.format("+%s", NumberFormat.getNumberInstance().format(score - prevScore));
+			"-" : String.format("+%s", NumberFormat.getNumberInstance().format(score - prevScore));
 		Fonts.DEFAULT.drawString(edgeX - Fonts.DEFAULT.getWidth(diff), y + marginY + Fonts.DEFAULT.getLineHeight() * 2, diff, c);
 
 		// time since
@@ -320,9 +327,9 @@ public class ScoreData implements Comparable<ScoreData> {
 			Image clock = GameImage.HISTORY.getImage();
 			clock.drawCentered(x + buttonWidth * 1.02f + clock.getWidth() / 2f, midY);
 			Fonts.DEFAULT.drawString(
-					x + buttonWidth * 1.03f + clock.getWidth(),
-					midY - Fonts.DEFAULT.getLineHeight() / 2f,
-					getTimeSince(), c
+				x + buttonWidth * 1.03f + clock.getWidth(),
+				midY - Fonts.DEFAULT.getLineHeight() / 2f,
+				getTimeSince(), c
 			);
 		}
 
@@ -330,39 +337,76 @@ public class ScoreData implements Comparable<ScoreData> {
 	}
 
 	/**
-	 * Draws the score ingame (smaller and with less information).
+	 * Draws the score in-game (smaller and with less information).
 	 * @param g the current graphics context
 	 * @param vPos the base y position of the scoreboard
 	 * @param rank the current rank of this score
 	 * @param position the animated position offset
 	 * @param data an instance of GameData to draw rank number
-	 * @param alpha the transparancy of the score
+	 * @param alpha the transparency of the score
 	 * @param isActive if this score is the one currently played
 	 */
 	public void drawSmall(Graphics g, int vPos, int rank, float position, GameData data, float alpha, boolean isActive) {
-
+		int rectWidth = (int) (145 * GameImage.getUIscale());  //135
 		int rectHeight = data.getScoreSymbolImage('0').getHeight();
 		int vertDistance = rectHeight + 10;
-		int yPos = (int)(vPos + position * vertDistance - rectHeight/2);
+		int yPos = (int) (vPos + position * vertDistance - rectHeight / 2);
+		int xPaddingLeft = Math.max(4, (int) (rectWidth * 0.04f));
+		int xPaddingRight = Math.max(2, (int) (rectWidth * 0.02f));
+		int yPadding = Math.max(2, (int) (rectHeight * 0.02f));
 		String scoreString = String.format(Locale.US, "%,d", score);
 		String comboString = String.format("%dx", combo);
 		String rankString = String.format("%d", rank);
-		int rectWidth = (int) (170 * GameImage.getUIscale());
 
-		Color rectColor = isActive ? Colors.YELLOW_ALPHA : Colors.BLACK_ALPHA;
-		rectColor.a = 0.5f * alpha;
-		
+		Color white = Colors.WHITE_ALPHA, blue = Colors.BLUE_SCOREBOARD, black = Colors.BLACK_ALPHA;
+		float oldAlphaWhite = white.a, oldAlphaBlue = blue.a, oldAlphaBlack = black.a;
+
+		// rectangle background
+		Color rectColor = isActive ? white : blue;
+		rectColor.a = alpha * 0.2f;
 		g.setColor(rectColor);
 		g.fillRect(0, yPos, rectWidth, rectHeight);
-		data.drawSymbolString(rankString, rectWidth, yPos, 1.0f, 0.25f*alpha, true);
-		if (playerName != null) {
-			Colors.WHITE_ALPHA.a = 0.5f * alpha;
-			Fonts.MEDIUM.drawString(0, yPos, playerName, Colors.WHITE_ALPHA);
-		}
-		Colors.WHITE_ALPHA.a = alpha;
-		Fonts.MEDIUMBOLD.drawString(0, yPos + rectHeight - Fonts.MEDIUMBOLD.getLineHeight(), scoreString, Colors.WHITE_ALPHA);
-		Fonts.MEDIUMBOLD.drawString(rectWidth - Fonts.MEDIUMBOLD.getWidth(comboString), yPos + rectHeight - Fonts.MEDIUMBOLD.getLineHeight(), comboString, Colors.WHITE_ALPHA);
+		black.a = alpha * 0.2f;
+		g.setColor(black);
+		float oldLineWidth = g.getLineWidth();
+		g.setLineWidth(1f);
+		g.drawRect(0, yPos, rectWidth, rectHeight);
+		g.setLineWidth(oldLineWidth);
 
+		// rank
+		data.drawSymbolString(rankString, rectWidth, yPos, 1.0f, alpha * 0.2f, true);
+
+		white.a = blue.a = alpha * 0.75f;
+
+		// player name
+		if (playerName != null)
+			Fonts.MEDIUM.drawString(xPaddingLeft, yPos + yPadding, playerName, white);
+
+		// score
+		Fonts.DEFAULT.drawString(
+			xPaddingLeft, yPos + rectHeight - Fonts.DEFAULT.getLineHeight() - yPadding, scoreString, white
+		);
+
+		// combo
+		Fonts.DEFAULT.drawString(
+			rectWidth - Fonts.DEFAULT.getWidth(comboString) - xPaddingRight,
+			yPos + rectHeight - Fonts.DEFAULT.getLineHeight() - yPadding,
+			comboString, blue
+		);
+
+		white.a = oldAlphaWhite;
+		blue.a = oldAlphaBlue;
+		black.a = oldAlphaBlack;
+	}
+
+	/**
+	 * Loads glyphs necessary for rendering the player name.
+	 */
+	public void loadGlyphs() {
+		if (playerName != null) {
+			Fonts.loadGlyphs(Fonts.LARGE, playerName);
+			Fonts.loadGlyphs(Fonts.MEDIUM, playerName);
+		}
 	}
 
 	/**

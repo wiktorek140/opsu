@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,10 +19,11 @@
 package itdelatrisu.opsu.replay;
 
 import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.beatmap.Beatmap;
 import itdelatrisu.opsu.beatmap.BeatmapSetList;
 import itdelatrisu.opsu.db.ScoreDB;
+import itdelatrisu.opsu.options.Options;
+import itdelatrisu.opsu.ui.UI;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -37,7 +38,7 @@ import org.newdawn.slick.util.Log;
  */
 public class ReplayImporter {
 	/** The subdirectory (within the replay import directory) to move replays that could not be imported. */
-	private static final String FAILED_IMPORT_DIR = "failed";
+	private static final String FAILED_IMPORT_DIR = "InvalidReplays";
 
 	/** The index of the current file being imported. */
 	private static int fileIndex = -1;
@@ -76,6 +77,7 @@ public class ReplayImporter {
 		}
 
 		// import OSRs
+		int importCount = 0;
 		for (File file : files) {
 			fileIndex++;
 			Replay r = new Replay(file);
@@ -95,6 +97,7 @@ public class ReplayImporter {
 				File moveToFile = new File(replayDir, String.format("%s.osr", r.getReplayFilename()));
 				try {
 					Files.move(file.toPath(), moveToFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+					importCount++;
 				} catch (IOException e) {
 					Log.warn(String.format("Failed to move replay '%s' to the replay directory '%s'.", file, replayDir), e);
 				}
@@ -107,6 +110,11 @@ public class ReplayImporter {
 
 		fileIndex = -1;
 		files = null;
+
+		if (importCount > 0) {
+			String text = String.format("Imported %d replay%s.", importCount, importCount == 1 ? "" : "s");
+			UI.getNotificationManager().sendNotification(text);
+		}
 	}
 
 	/**
@@ -114,7 +122,7 @@ public class ReplayImporter {
 	 * @param file the file to move
 	 */
 	private static void moveToFailedDirectory(File file) {
-		File dir = new File(Options.getReplayImportDir(), FAILED_IMPORT_DIR);
+		File dir = new File(Options.getImportDir(), FAILED_IMPORT_DIR);
 		dir.mkdir();
 		File moveToFile = new File(dir, file.getName());
 		try {

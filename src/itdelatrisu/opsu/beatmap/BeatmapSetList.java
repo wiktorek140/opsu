@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,10 +19,10 @@
 package itdelatrisu.opsu.beatmap;
 
 import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.audio.MusicController;
 import itdelatrisu.opsu.db.BeatmapDB;
+import itdelatrisu.opsu.options.Options;
 
 import java.io.File;
 import java.io.IOException;
@@ -53,6 +53,9 @@ public class BeatmapSetList {
 
 	/** Total number of beatmaps (i.e. Beatmap objects). */
 	private int mapCount = 0;
+
+	/** List containing all nodes in the current group. */
+	private ArrayList<BeatmapSetNode> groupNodes;
 
 	/** Current list of nodes (subset of parsedNodes, used for searches). */
 	private ArrayList<BeatmapSetNode> nodes;
@@ -97,10 +100,10 @@ public class BeatmapSetList {
 	 * This does not erase any parsed nodes.
 	 */
 	public void reset() {
-		nodes = parsedNodes;
+		nodes = groupNodes = BeatmapGroup.current().filter(parsedNodes);
 		expandedIndex = -1;
 		expandedStartNode = expandedEndNode = null;
-		lastQuery = "";
+		lastQuery = null;
 	}
 
 	/**
@@ -168,6 +171,7 @@ public class BeatmapSetList {
 		Beatmap beatmap = beatmapSet.get(0);
 		nodes.remove(index);
 		parsedNodes.remove(eCur);
+		groupNodes.remove(eCur);
 		mapCount -= beatmapSet.size();
 		if (beatmap.beatmapSetID > 0)
 			MSIDdb.remove(beatmap.beatmapSetID);
@@ -197,7 +201,7 @@ public class BeatmapSetList {
 			File audioFile = MusicController.getBeatmap().audioFilename;
 			if (audioFile != null && audioFile.equals(beatmap.audioFilename)) {
 				MusicController.reset();
-				System.gc();  // TODO: why can't files be deleted without calling this?
+				Utils.gc(true);  // TODO: why can't files be deleted without calling this?
 			}
 		}
 
@@ -407,7 +411,7 @@ public class BeatmapSetList {
 			return;
 
 		// sort the list
-		Collections.sort(nodes, BeatmapSortOrder.getSort().getComparator());
+		Collections.sort(nodes, BeatmapSortOrder.current().getComparator());
 		expandedIndex = -1;
 		expandedStartNode = expandedEndNode = null;
 
@@ -444,7 +448,7 @@ public class BeatmapSetList {
 
 		// if empty query, reset to original list
 		if (query.isEmpty() || terms.isEmpty()) {
-			nodes = parsedNodes;
+			nodes = groupNodes;
 			return true;
 		}
 
@@ -472,14 +476,14 @@ public class BeatmapSetList {
 			String type = condType.remove();
 			String operator = condOperator.remove();
 			float value = condValue.remove();
-			for (BeatmapSetNode node : parsedNodes) {
+			for (BeatmapSetNode node : groupNodes) {
 				if (node.getBeatmapSet().matches(type, operator, value))
 					nodes.add(node);
 			}
 		} else {
 			// normal term
 			String term = terms.remove();
-			for (BeatmapSetNode node : parsedNodes) {
+			for (BeatmapSetNode node : groupNodes) {
 				if (node.getBeatmapSet().matches(term))
 					nodes.add(node);
 			}

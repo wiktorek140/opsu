@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,10 +19,10 @@
 package itdelatrisu.opsu.beatmap;
 
 import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.db.BeatmapDB;
 import itdelatrisu.opsu.io.MD5InputStreamWrapper;
+import itdelatrisu.opsu.options.Options;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -80,8 +80,16 @@ public class BeatmapParser {
 	 * adds the beatmaps to a new BeatmapSetList.
 	 * @param root the root directory (search has depth 1)
 	 */
-	public static void parseAllFiles(File root) {
-		// create a new BeatmapSetList
+	public static void parseAllFiles(File root) { parseAllFiles(root, null); }
+
+	/**
+	 * Invokes parser for each OSU file in a root directory and
+	 * adds the beatmaps to a new BeatmapSetList.
+	 * @param root the root directory (search has depth 1)
+	 * @param oldBeatmapList the old beatmap list to copy non-parsed fields from
+	 */
+	public static void parseAllFiles(File root, BeatmapSetList oldBeatmapList) {
+		// create a new beatmap list
 		BeatmapSetList.create();
 
 		// create a new watch service
@@ -89,7 +97,7 @@ public class BeatmapParser {
 			BeatmapWatchService.create();
 
 		// parse all directories
-		parseDirectories(root.listFiles());
+		parseDirectories(root.listFiles(), oldBeatmapList);
 	}
 
 	/**
@@ -99,6 +107,17 @@ public class BeatmapParser {
 	 * @return the last BeatmapSetNode parsed, or null if none
 	 */
 	public static BeatmapSetNode parseDirectories(File[] dirs) {
+		return parseDirectories(dirs, null);
+	}
+
+	/**
+	 * Invokes parser for each directory in the given array and
+	 * adds the beatmaps to the existing BeatmapSetList.
+	 * @param dirs the array of directories to parse
+	 * @param oldBeatmapList the old beatmap list to copy non-parsed fields from
+	 * @return the last BeatmapSetNode parsed, or null if none
+	 */
+	public static BeatmapSetNode parseDirectories(File[] dirs, BeatmapSetList oldBeatmapList) {
 		if (dirs == null)
 			return null;
 
@@ -108,7 +127,7 @@ public class BeatmapParser {
 		totalDirectories = dirs.length;
 
 		// get last modified map from database
-		Map<String, Long> map = BeatmapDB.getLastModifiedMap();
+		Map<String, BeatmapDB.LastModifiedMapEntry> lastModifiedMap = BeatmapDB.getLastModifiedMap();
 
 		// beatmap lists
 		List<ArrayList<Beatmap>> allBeatmaps = new LinkedList<ArrayList<Beatmap>>();
@@ -120,6 +139,7 @@ public class BeatmapParser {
 
 		// parse directories
 		BeatmapSetNode lastNode = null;
+		long timestamp = System.currentTimeMillis();
 		for (File dir : dirs) {
 			currentDirectoryIndex++;
 			if (!dir.isDirectory())
@@ -136,34 +156,55 @@ public class BeatmapParser {
 				continue;
 
 			// create a new group entry
-			ArrayList<Beatmap> beatmaps = new ArrayList<Beatmap>();
+			ArrayList<Beatmap> beatmaps = new ArrayList<Beatmap>(files.length);
 			for (File file : files) {
 				currentFile = file;
 
 				// check if beatmap is cached
-				String path = String.format("%s/%s", dir.getName(), file.getName());
-				if (map != null) {
-					Long lastModified = map.get(path);
-					if (lastModified != null) {
+				String beatmapPath = String.format("%s/%s", dir.getName(), file.getName());
+				if (lastModifiedMap != null) {
+					BeatmapDB.LastModifiedMapEntry entry = lastModifiedMap.get(beatmapPath);
+					if (entry != null) {
 						// check last modified times
-						if (lastModified == file.lastModified()) {
-							// add to cached beatmap list
-							Beatmap beatmap = new Beatmap(file);
-							beatmaps.add(beatmap);
-							cachedBeatmaps.add(beatmap);
+						if (entry.getLastModified() == file.lastModified()) {
+							if (entry.getMode() == Beatmap.MODE_OSU) {  // only support standard mode
+								// add to cached beatmap list
+								Beatmap beatmap = new Beatmap(file);
+								beatmaps.add(beatmap);
+								cachedBeatmaps.add(beatmap);
+							}
 							continue;
-						} else
+						} else  // out of sync, delete cache entry and re-parse
 							BeatmapDB.delete(dir.getName(), file.getName());
 					}
 				}
 
-				// Parse hit objects only when needed to save time/memory.
-				// Change boolean to 'true' to parse them immediately.
-				Beatmap beatmap = parseFile(file, dir, beatmaps, false);
+				// parse beatmap
+				Beatmap beatmap = null;
+				try {
+					// Parse hit objects only when needed to save time/memory.
+					// Change boolean to 'true' to parse them immediately.
+					beatmap = parseFile(file, dir, beatmaps, false);
+				} catch (Exception e) {
+					ErrorHandler.error(String.format("Failed to parse beatmap file '%s'.",
+							file.getAbsolutePath()), e, true);
+				}
 
 				// add to parsed beatmap list
 				if (beatmap != null) {
-					beatmaps.add(beatmap);
+					// copy non-parsed fields
+					Beatmap oldBeatmap;
+					if (oldBeatmapList != null && (oldBeatmap = oldBeatmapList.getBeatmapFromHash(beatmap.md5Hash)) != null)
+						oldBeatmap.copyAdditionalFields(beatmap);
+
+					// add timestamp
+					if (beatmap.dateAdded < 1)
+						beatmap.dateAdded = timestamp;
+
+					// only support standard mode
+					if (beatmap.mode == Beatmap.MODE_OSU)
+						beatmaps.add(beatmap);
+
 					parsedBeatmaps.add(beatmap);
 				}
 			}
@@ -295,11 +336,6 @@ public class BeatmapParser {
 								break;
 							case "Mode":
 								beatmap.mode = Byte.parseByte(tokens[1]);
-
-								/* Non-Opsu! standard files not implemented (obviously). */
-								if (beatmap.mode != Beatmap.MODE_OSU)
-									return null;
-
 								break;
 							case "LetterboxInBreaks":
 								beatmap.letterboxInBreaks = Utils.parseBoolean(tokens[1]);
@@ -309,6 +345,10 @@ public class BeatmapParser {
 								break;
 							case "EpilepsyWarning":
 								beatmap.epilepsyWarning = Utils.parseBoolean(tokens[1]);
+								break;
+//							case "SpecialStyle":  // mania only
+//								beatmap.specialStyle = Utils.parseBoolean(tokens[1]);
+//								break;
 							default:
 								break;
 							}
@@ -459,11 +499,17 @@ public class BeatmapParser {
 							break;
 						tokens = line.split(",");
 						switch (tokens[0]) {
-						case "0":  // background
+						case "0":  // background image
 							tokens[2] = tokens[2].replaceAll("^\"|\"$", "");
 							String ext = BeatmapParser.getExtension(tokens[2]);
 							if (ext.equals("jpg") || ext.equals("png"))
 								beatmap.bg = new File(dir, getDBString(tokens[2]));
+							break;
+						case "1":
+						case "Video":  // background video
+							tokens[2] = tokens[2].replaceAll("^\"|\"$", "");
+							beatmap.video = new File(dir, getDBString(tokens[2]));
+							beatmap.videoOffset = Integer.parseInt(tokens[1]);
 							break;
 						case "2":  // break periods
 							try {
@@ -495,19 +541,19 @@ public class BeatmapParser {
 						try {
 							// parse timing point
 							TimingPoint timingPoint = new TimingPoint(line);
+							beatmap.timingPoints.add(timingPoint);
 
 							// calculate BPM
 							if (!timingPoint.isInherited()) {
 								int bpm = Math.round(60000 / timingPoint.getBeatLength());
-								if (beatmap.bpmMin == 0)
+								if (beatmap.bpmMin == 0) {
 									beatmap.bpmMin = beatmap.bpmMax = bpm;
-								else if (bpm < beatmap.bpmMin)
+								} else if (bpm < beatmap.bpmMin) {
 									beatmap.bpmMin = bpm;
-								else if (bpm > beatmap.bpmMax)
+								} else if (bpm > beatmap.bpmMax) {
 									beatmap.bpmMax = bpm;
+								}
 							}
-
-							beatmap.timingPoints.add(timingPoint);
 						} catch (Exception e) {
 							Log.warn(String.format("Failed to read timing point '%s' for file '%s'.",
 									line, file.getAbsolutePath()), e);

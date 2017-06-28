@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,10 +23,16 @@ import itdelatrisu.opsu.audio.SoundEffect;
 import itdelatrisu.opsu.beatmap.HitObject;
 import itdelatrisu.opsu.downloads.Download;
 import itdelatrisu.opsu.downloads.DownloadNode;
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.replay.PlaybackSpeed;
+import itdelatrisu.opsu.ui.Colors;
 import itdelatrisu.opsu.ui.Fonts;
+import itdelatrisu.opsu.ui.NotificationManager.NotificationListener;
 import itdelatrisu.opsu.ui.UI;
+import itdelatrisu.opsu.user.UserButton;
+import itdelatrisu.opsu.user.UserList;
 
+import java.awt.Desktop;
 import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -41,15 +47,22 @@ import java.net.SocketTimeoutException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.ByteBuffer;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.Scanner;
 import java.util.jar.JarFile;
 
 import javax.imageio.ImageIO;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -58,12 +71,16 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 import org.newdawn.slick.Animation;
+import org.newdawn.slick.Color;
 import org.newdawn.slick.GameContainer;
 import org.newdawn.slick.Input;
 import org.newdawn.slick.state.StateBasedGame;
 import org.newdawn.slick.util.Log;
 
 import com.sun.jna.platform.FileUtils;
+
+import net.lingala.zip4j.core.ZipFile;
+import net.lingala.zip4j.exception.ZipException;
 
 /**
  * Contains miscellaneous utilities.
@@ -81,6 +98,12 @@ public class Utils {
 	static {
 		Arrays.sort(illegalChars);
 	}
+
+	/** Minimum memory used by the JVM (in bytes) before running "optional" garbage collection. */
+	private static final long GC_MEMORY_THRESHOLD = 150 * 1_000_000L;  // 150MB
+
+	/** Baseline memory used by the JVM (in bytes). */
+	private static long baselineMemoryUsed = 0;
 
 	// game-related variables
 	private static Input input;
@@ -106,6 +129,9 @@ public class Utils {
 		container.getInput().enableKeyRepeat();
 		container.setAlwaysRender(true);
 		container.setUpdateOnlyWhenVisible(false);
+
+		// record OpenGL version
+		ErrorHandler.setGlString();
 
 		// calculate UI scale
 		GameImage.init(width, height);
@@ -140,6 +166,23 @@ public class Utils {
 
 		// initialize UI components
 		UI.init(container, game);
+
+		// build user list
+		UserList.create();
+
+		// initialize user button
+		UserButton.init(width, height);
+
+		// warn about software mode
+		if (((Container) container).isSoftwareMode()) {
+			UI.getNotificationManager().sendNotification(
+				"WARNING:\n" +
+				"Running in OpenGL software mode.\n" +
+				"You may experience severely degraded performance.\n\n" +
+				"This can usually be resolved by updating your graphics drivers.",
+				Color.red
+			);
+		}
 	}
 
 	/**
@@ -150,6 +193,14 @@ public class Utils {
 	 */
 	public static void drawCentered(Animation anim, float x, float y) {
 		anim.draw(x - (anim.getWidth() / 2f), y - (anim.getHeight() / 2f));
+	}
+
+	/**
+	 * Returns the luminance of a color.
+	 * @param c the color
+	 */
+	public static float getLuminance(Color c) {
+		return 0.299f*c.r + 0.587f*c.g + 0.114f*c.b;
 	}
 
 	/**
@@ -185,6 +236,21 @@ public class Utils {
 	}
 
 	/**
+	 * Clamps a value between a lower and upper bound.
+	 * @param val the value to clamp
+	 * @param low the lower bound
+	 * @param high the upper bound
+	 * @return the clamped value
+	 */
+	public static double clamp(double val, double low, double high) {
+		if (val < low)
+			return low;
+		if (val > high)
+			return high;
+		return val;
+	}
+
+	/**
 	 * Returns the distance between two points.
 	 * @param x1 the x-component of the first point
 	 * @param y1 the y-component of the first point
@@ -203,6 +269,38 @@ public class Utils {
 	 */
 	public static float lerp(float a, float b, float t) {
 		return a * (1 - t) + b * t;
+	}
+
+	/**
+	 * Calculates the standard deviation of the numbers in the list.
+	 */
+	public static double standardDeviation(List<Integer> list) {
+		float avg = 0f;
+		for (int i : list)
+			avg += i;
+		avg /= list.size();
+		float var = 0f;
+		for (int i : list)
+			var += (i - avg) * (i - avg);
+		var /= list.size();
+		return Math.sqrt(var);
+	}
+
+	/**
+	 * Maps a difficulty value to the given range.
+	 * @param difficulty the difficulty value
+	 * @param min the min
+	 * @param mid the mid
+	 * @param max the max
+	 * @author peppy (ppy/osu-iPhone:OsuFunctions.m)
+	 */
+	public static float mapDifficultyRange(float difficulty, float min, float mid, float max) {
+		if (difficulty > 5f)
+			return mid + (max - mid) * (difficulty - 5f) / 5f;
+		else if (difficulty < 5f)
+			return mid - (mid - min) * (5f - difficulty) / 5f;
+		else
+			return mid;
 	}
 
 	/**
@@ -260,6 +358,20 @@ public class Utils {
 						}
 					}
 					ImageIO.write(image, Options.getScreenshotFormat(), file);
+					UI.getNotificationManager().sendNotification(
+						String.format("Saved screenshot to %s", file.getAbsolutePath()),
+						Colors.PURPLE,
+						new NotificationListener() {
+							@Override
+							public void click() {
+								try {
+									Utils.openInFileManager(file);
+								} catch (IOException e) {
+									Log.warn("Failed to open screenshot location.", e);
+								}
+							}
+						}
+					);
 				} catch (Exception e) {
 					ErrorHandler.error("Failed to take a screenshot.", e, true);
 				}
@@ -305,6 +417,21 @@ public class Utils {
 	}
 
 	/**
+	 * Extracts the contents of a ZIP archive to a destination.
+	 * @param file the ZIP archive
+	 * @param dest the destination directory
+	 */
+	public static void unzip(File file, File dest) {
+		try {
+			ZipFile zipFile = new ZipFile(file);
+			zipFile.extractAll(dest.getAbsolutePath());
+		} catch (ZipException e) {
+			ErrorHandler.error(String.format("Failed to unzip file %s to dest %s.",
+					file.getAbsolutePath(), dest.getAbsolutePath()), e, false);
+		}
+	}
+
+	/**
 	 * Deletes a file or directory.  If a system trash directory is available,
 	 * the file or directory will be moved there instead.
 	 * @param file the file or directory to delete
@@ -341,7 +468,7 @@ public class Utils {
 	 * deletes the directory itself.
 	 * @param dir the directory to delete
 	 */
-	private static void deleteDirectory(File dir) {
+	public static void deleteDirectory(File dir) {
 		if (dir == null || !dir.isDirectory())
 			return;
 
@@ -361,6 +488,36 @@ public class Utils {
 	}
 
 	/**
+	 * Opens the file manager to the given location.
+	 * If the location is a file, it will be highlighted if possible.
+	 * @param file the file or directory
+	 */
+	public static void openInFileManager(File file) throws IOException {
+		File f = file;
+
+		// try to highlight the file (platform-specific)
+		if (f.isFile()) {
+			String osName = System.getProperty("os.name");
+			if (osName.startsWith("Win")) {
+				// windows: select in Explorer
+				Runtime.getRuntime().exec("explorer.exe /select," + f.getAbsolutePath());
+				return;
+			} else if (osName.startsWith("Mac")) {
+				// mac: reveal in Finder
+				Runtime.getRuntime().exec("open -R " + f.getAbsolutePath());
+				return;
+			}
+			f = f.getParentFile();
+		}
+
+		// open directory using Desktop API
+		if (f.isDirectory()) {
+			if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN))
+				Desktop.getDesktop().open(f);
+		}
+	}
+
+	/**
 	 * Returns a the contents of a URL as a string.
 	 * @param url the remote URL
 	 * @return the contents as a string, or null if any error occurred
@@ -373,6 +530,7 @@ public class Utils {
 		conn.setConnectTimeout(Download.CONNECTION_TIMEOUT);
 		conn.setReadTimeout(Download.READ_TIMEOUT);
 		conn.setUseCaches(false);
+		conn.setRequestProperty("User-Agent", "Mozilla/5.0...");
 		try {
 			conn.connect();
 		} catch (SocketTimeoutException e) {
@@ -402,18 +560,11 @@ public class Utils {
 	 * @param url the remote URL
 	 * @return the JSON object, or null if an error occurred
 	 * @throws IOException if an I/O exception occurs
+	 * @throws JSONException if a JSON exception occurs
 	 */
-	public static JSONObject readJsonObjectFromUrl(URL url) throws IOException {
+	public static JSONObject readJsonObjectFromUrl(URL url) throws IOException, JSONException {
 		String s = Utils.readDataFromUrl(url);
-		JSONObject json = null;
-		if (s != null) {
-			try {
-				json = new JSONObject(s);
-			} catch (JSONException e) {
-				ErrorHandler.error("Failed to create JSON object.", e, true);
-			}
-		}
-		return json;
+		return s == null ? null : new JSONObject(s);
 	}
 
 	/**
@@ -421,18 +572,11 @@ public class Utils {
 	 * @param url the remote URL
 	 * @return the JSON array, or null if an error occurred
 	 * @throws IOException if an I/O exception occurs
+	 * @throws JSONException if a JSON exception occurs
 	 */
-	public static JSONArray readJsonArrayFromUrl(URL url) throws IOException {
+	public static JSONArray readJsonArrayFromUrl(URL url) throws IOException, JSONException {
 		String s = Utils.readDataFromUrl(url);
-		JSONArray json = null;
-		if (s != null) {
-			try {
-				json = new JSONArray(s);
-			} catch (JSONException e) {
-				ErrorHandler.error("Failed to create JSON array.", e, true);
-			}
-		}
-		return json;
+		return s == null ? null : new JSONArray(s);
 	}
 
 	/**
@@ -528,6 +672,14 @@ public class Utils {
 	}
 
 	/**
+	 * Returns the current working directory.
+	 * @return the directory
+	 */
+	public static File getWorkingDirectory() {
+		return Paths.get(".").toAbsolutePath().normalize().toFile();
+	}
+
+	/**
 	 * Parses the integer string argument as a boolean:
 	 * {@code 1} is {@code true}, and all other values are {@code false}.
 	 * @param s the {@code String} containing the boolean representation to be parsed
@@ -560,5 +712,48 @@ public class Utils {
 		} catch (IOException e) {
 			return null;
 		}
+	}
+
+	/**
+	 * Switches validation of SSL certificates on or off by installing a default
+	 * all-trusting {@link TrustManager}.
+	 * @param enabled whether to validate SSL certificates
+	 * @author neu242 (http://stackoverflow.com/a/876785)
+	 */
+	public static void setSSLCertValidation(boolean enabled) {
+		// create a trust manager that does not validate certificate chains
+		TrustManager[] trustAllCerts = new TrustManager[]{
+			new X509TrustManager() {
+				@Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+				@Override public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+				@Override public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+			}
+		};
+
+		// install the all-trusting trust manager
+		try {
+			SSLContext sc = SSLContext.getInstance("SSL");
+			sc.init(null, enabled ? null : trustAllCerts, null);
+			HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+		} catch (Exception e) {}
+	}
+
+	/**
+	 * Runs the garbage collector.
+	 * @param force if false, garbage collection will only run if current memory
+	 *              usage is above a threshold
+	 */
+	public static void gc(boolean force) {
+		if (!force && getUsedMemory() - baselineMemoryUsed < GC_MEMORY_THRESHOLD)
+			return;
+
+		System.gc();
+		baselineMemoryUsed = getUsedMemory();
+	}
+
+	/** Returns the amount memory used by the JVM (in bytes). */
+	public static long getUsedMemory() {
+		Runtime r = Runtime.getRuntime();
+		return r.totalMemory() - r.freeMemory();
 	}
 }

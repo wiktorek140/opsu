@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,8 @@
  */
 
 package itdelatrisu.opsu;
+
+import itdelatrisu.opsu.video.FFmpeg;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -99,6 +101,10 @@ public class NativeLoader {
 			if (name.endsWith(".dylib") || name.endsWith(".jnilib"))
 				return true;
 		}
+
+		if (name.equals(FFmpeg.DEFAULT_NATIVE_FILENAME.toLowerCase()))
+			return true;
+
 		return false;
 	}
 }

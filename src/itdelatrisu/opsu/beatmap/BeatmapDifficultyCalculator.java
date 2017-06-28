@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@ public class BeatmapDifficultyCalculator {
 	public static final int DIFFICULTY_SPEED = 0, DIFFICULTY_AIM = 1;
 
 	/** The star scaling factor. */
-	private static final double STAR_SCALING_FACTOR = 0.045;
+	private static final double STAR_SCALING_FACTOR = 0.0675;
 
 	/** The scaling factor that favors extremes. */
 	private static final double EXTREME_SCALING_FACTOR = 0.5;

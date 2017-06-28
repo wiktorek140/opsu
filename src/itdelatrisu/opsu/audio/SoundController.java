@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,10 +19,15 @@
 package itdelatrisu.opsu.audio;
 
 import itdelatrisu.opsu.ErrorHandler;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.audio.HitSound.SampleSet;
 import itdelatrisu.opsu.beatmap.HitObject;
+import itdelatrisu.opsu.downloads.Download;
+import itdelatrisu.opsu.downloads.Download.DownloadListener;
+import itdelatrisu.opsu.options.Options;
+import itdelatrisu.opsu.ui.NotificationManager.NotificationListener;
+import itdelatrisu.opsu.ui.UI;
 
+import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,7 +41,9 @@ import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineListener;
 import javax.sound.sampled.LineUnavailableException;
 
+import org.newdawn.slick.Color;
 import org.newdawn.slick.SlickException;
+import org.newdawn.slick.util.Log;
 import org.newdawn.slick.util.ResourceLoader;
 
 /**
@@ -74,10 +81,9 @@ public class SoundController {
 	/**
 	 * Loads and returns a Clip from a resource.
 	 * @param ref the resource name
-	 * @param isMP3 true if MP3, false if WAV
 	 * @return the loaded and opened clip
 	 */
-	private static MultiClip loadClip(String ref, boolean isMP3) {
+	private static MultiClip loadClip(String ref) {
 		try {
 			URL url = ResourceLoader.getResource(ref);
 
@@ -90,9 +96,9 @@ public class SoundController {
 			in.close();
 
 			AudioInputStream audioIn = AudioSystem.getAudioInputStream(url);
-			return loadClip(ref, audioIn, isMP3);
+			return loadClip(ref, audioIn);
 		} catch (Exception e) {
-			ErrorHandler.error(String.format("Failed to load file '%s'.", ref), e, true);
+			ErrorHandler.error(String.format("Failed to load audio file '%s'.", ref), e, true);
 			return null;
 		}
 	}
@@ -101,19 +107,29 @@ public class SoundController {
 	 * Loads and returns a Clip from an audio input stream.
 	 * @param ref the resource name
 	 * @param audioIn the audio input stream
-	 * @param isMP3 true if MP3, false if WAV
 	 * @return the loaded and opened clip
 	 */
-	private static MultiClip loadClip(String ref, AudioInputStream audioIn, boolean isMP3)
-			throws IOException, LineUnavailableException {
+	private static MultiClip loadClip(String ref, AudioInputStream audioIn)
+		throws IOException, LineUnavailableException {
 		AudioFormat format = audioIn.getFormat();
-		if (isMP3) {
+		String encoding = format.getEncoding().toString();
+		if (encoding.startsWith("MPEG")) {
+			// decode MP3
 			AudioFormat decodedFormat = new AudioFormat(
 					AudioFormat.Encoding.PCM_SIGNED, format.getSampleRate(), 16,
 					format.getChannels(), format.getChannels() * 2, format.getSampleRate(), false);
 			AudioInputStream decodedAudioIn = AudioSystem.getAudioInputStream(decodedFormat, audioIn);
 			format = decodedFormat;
 			audioIn = decodedAudioIn;
+		} else if (encoding.startsWith("GSM")) {
+			// Currently there's no way to decode GSM in WAV containers in Java.
+			// http://www.jsresources.org/faq_audio.html#gsm_in_wav
+			Log.warn(
+				"Failed to load audio file.\n" +
+				"Java cannot decode GSM in WAV containers; " +
+				"please re-encode this file to PCM format or remove it:\n" + ref
+			);
+			return null;
 		}
 		DataLine.Info info = new DataLine.Info(Clip.class, format);
 		if (AudioSystem.isLineSupported(info))
@@ -203,6 +219,7 @@ public class SoundController {
 			return;
 
 		currentFileIndex = 0;
+		int failedCount = 0;
 
 		// menu and game sounds
 		for (SoundEffect s : SoundEffect.values()) {
@@ -210,7 +227,9 @@ public class SoundController {
 				ErrorHandler.error(String.format("Could not find sound file '%s'.", s.getFileName()), null, false);
 				continue;
 			}
-			MultiClip newClip = loadClip(currentFileName, currentFileName.endsWith(".mp3"));
+			MultiClip newClip = loadClip(currentFileName);
+			if (newClip == null)
+				failedCount++;
 			if (s.getClip() != null) {  // clip previously loaded (e.g. program restart)
 				if (newClip != null) {
 					s.getClip().destroy();  // destroy previous clip
@@ -229,7 +248,9 @@ public class SoundController {
 					ErrorHandler.error(String.format("Could not find hit sound file '%s'.", filename), null, false);
 					continue;
 				}
-				MultiClip newClip = loadClip(currentFileName, false);
+				MultiClip newClip = loadClip(currentFileName);
+				if (newClip == null)
+					failedCount++;
 				if (s.getClip(ss) != null) {  // clip previously loaded (e.g. program restart)
 					if (newClip != null) {
 						s.getClip(ss).destroy();  // destroy previous clip
@@ -243,6 +264,24 @@ public class SoundController {
 
 		currentFileName = null;
 		currentFileIndex = -1;
+
+		// show a notification if any files failed to load
+		if (failedCount > 0) {
+			String text = String.format("Failed to load %d audio file%s.", failedCount, failedCount == 1 ? "" : "s");
+			NotificationListener listener = null;
+			if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+				text += "\nClick for details.";
+				listener = new NotificationListener() {
+					@Override
+					public void click() {
+						try {
+							Desktop.getDesktop().open(Options.LOG_FILE);
+						} catch (Exception e) {}
+					}
+				};
+			}
+			UI.getNotificationManager().sendNotification(text, Color.red, listener);
+		}
 	}
 
 	/**
@@ -279,6 +318,15 @@ public class SoundController {
 	 */
 	public static void playSound(SoundComponent s) {
 		playClip(s.getClip(), Options.getEffectVolume() * Options.getMasterVolume(), null);
+	}
+
+	/**
+	 * Stops playing a sound, if active.
+	 * @param s the sound effect
+	 */
+	public static void stopSound(SoundComponent s) {
+		if (s.getClip() != null)
+			s.getClip().stop();
 	}
 
 	/**
@@ -345,24 +393,56 @@ public class SoundController {
 	}
 
 	/**
-	 * Plays a track from a URL.
+	 * Plays a track from a remote URL.
 	 * If a track is currently playing, it will be stopped.
-	 * @param url the resource URL
-	 * @param isMP3 true if MP3, false if WAV
+	 * @param url the remote URL
+	 * @param filename the track file name
 	 * @param listener the line listener
-	 * @return the MultiClip being played
+	 * @return true if playing, false otherwise
 	 * @throws SlickException if any error occurred
 	 */
-	public static synchronized MultiClip playTrack(URL url, boolean isMP3, LineListener listener) throws SlickException {
+	public static synchronized boolean playTrack(String url, String filename, LineListener listener)
+		throws SlickException {
+		// stop previous track
 		stopTrack();
-		try {
-			AudioInputStream audioIn = AudioSystem.getAudioInputStream(url);
-			currentTrack = loadClip(url.getFile(), audioIn, isMP3);
-			playClip(currentTrack, Options.getMusicVolume() * Options.getMasterVolume(), listener);
-			return currentTrack;
-		} catch (Exception e) {
-			throw new SlickException(String.format("Failed to load clip '%s'.", url.getFile(), e));
+
+		// download new track
+		File dir = Options.TEMP_DIR;
+		if (!dir.isDirectory())
+			dir.mkdir();
+		final File downloadFile = new File(dir, filename);
+		boolean complete;
+		if (downloadFile.isFile()) {
+			complete = true;  // file already downloaded
+		} else {
+			Download download = new Download(url, downloadFile.getAbsolutePath());
+			download.setListener(new DownloadListener() {
+				@Override
+				public void completed() {}
+
+				@Override
+				public void error() {
+					UI.getNotificationManager().sendBarNotification("Failed to download track preview.");
+				}
+			});
+			try {
+				download.start().join();
+			} catch (InterruptedException e) {}
+			complete = (download.getStatus() == Download.Status.COMPLETE);
 		}
+
+		// play the track
+		if (complete) {
+			try {
+				AudioInputStream audioIn = AudioSystem.getAudioInputStream(downloadFile);
+				currentTrack = loadClip(filename, audioIn);
+				playClip(currentTrack, Options.getMusicVolume() * Options.getMasterVolume(), listener);
+				return true;
+			} catch (Exception e) {
+				throw new SlickException(String.format("Failed to load clip '%s'.", url));
+			}
+		}
+		return false;
 	}
 
 	/**

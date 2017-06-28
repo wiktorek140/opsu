@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,6 +61,17 @@ public class KineticScrolling {
 	/** The speed multiplier (divides {@link #TIME_CONST}). */
 	private float speedMultiplier = 1f;
 
+	/** Whether or not to allow overscrolling. */
+	private boolean allowOverScroll;
+
+	/**
+	 * Enable or disable the overscrolling flag.
+	 * @param allowOverScroll whether or not to allow overscrolling
+	 */
+	public void setAllowOverScroll(boolean allowOverScroll) {
+		this.allowOverScroll = allowOverScroll;
+	}
+
 	/**
 	 * Returns the current position.
 	 * @return the position
@@ -72,6 +83,24 @@ public class KineticScrolling {
 	 * @return the target position
 	 */
 	public float getTargetPosition() { return target; }
+
+	/**
+	 * Returns the minimum value.
+	 * @return the min
+	 */
+	public float getMin() { return min; }
+
+	/**
+	 * Returns the minimum value.
+	 * @return the max
+	 */
+	public float getMax() { return max; }
+
+	/**
+	 * Returns if the mouse state is currently pressed.
+	 * @return true if pressed
+	 */
+	public boolean isPressed() { return pressed; }
 
 	/**
 	 * Updates the scrolling.
@@ -88,13 +117,24 @@ public class KineticScrolling {
 			target = position;
 			deltaPosition = 0;
 		}
+		if (allowOverScroll && pressed) {
+			return;
+		}
 		if (position > max) {
-			amplitude = 0;
-			target = position = max;
+			if (allowOverScroll) {
+				scrollToPosition(max);
+			} else {
+				amplitude = 0;
+				target = position = max;
+			}
 		}
 		if (position < min) {
-			amplitude = 0;
-			target = position = min;
+			if (allowOverScroll) {
+				scrollToPosition(min);
+			} else {
+				amplitude = 0;
+				target = position = min;
+			}
 		}
 	}
 
@@ -187,4 +227,9 @@ public class KineticScrolling {
 			throw new IllegalArgumentException("Speed multiplier must be above zero.");
 		this.speedMultiplier = multiplier;
 	}
+
+	/**
+	 * Returns the speed multiplier.
+	 */
+	public float getSpeedMultiplier() { return speedMultiplier; }
 }

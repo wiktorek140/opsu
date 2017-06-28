@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,8 @@
  */
 
 package itdelatrisu.opsu.skins;
+
+import itdelatrisu.opsu.OpsuConstants;
 
 import java.io.File;
 
@@ -37,7 +39,7 @@ public class Skin {
 		STYLE_OPENGLSLIDER = 4;  // not implemented
 
 	/** The latest skin version. */
-	protected static final int LATEST_VERSION = 2;
+	protected static final float LATEST_VERSION = 2;
 
 	/** The default list of combos with combo sounds. */
 	private static final int[] DEFAULT_CUSTOM_COMBO_BURST_SOUNDS = { 50, 75, 100, 200, 300 };
@@ -79,13 +81,13 @@ public class Skin {
 	 */
 
 	/** The name of the skin. */
-	protected String name = "opsu! Default Skin";
+	protected String name = OpsuConstants.PROJECT_NAME + " Default Skin";
 
 	/** The skin author. */
 	protected String author = "[various authors]";
 
 	/** The skin version. */
-	protected int version = LATEST_VERSION;
+	protected float version = LATEST_VERSION;
 
 	/** When a slider has a reverse, should the ball sprite flip horizontally? */
 	protected boolean sliderBallFlip = false;
@@ -211,7 +213,7 @@ public class Skin {
 	/**
 	 * Returns the skin version.
 	 */
-	public int getVersion() { return version; }
+	public float getVersion() { return version; }
 
 	/**
 	 * Returns whether the slider ball should be flipped horizontally during a reverse.
@@ -271,7 +273,7 @@ public class Skin {
 
 	/**
 	 * Returns the frame rate of animations.
-	 * @return the FPS, or {@code -1} (TODO)
+	 * @return the FPS, or {@code -1} if not set
 	 */
 	public int getAnimationFramerate() { return animationFramerate; }
 

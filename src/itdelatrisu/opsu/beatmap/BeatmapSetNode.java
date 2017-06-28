@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,8 +19,8 @@
 package itdelatrisu.opsu.beatmap;
 
 import itdelatrisu.opsu.GameData.Grade;
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.GameImage;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.ui.Colors;
 import itdelatrisu.opsu.ui.Fonts;
 
@@ -75,7 +75,7 @@ public class BeatmapSetNode {
 	public void draw(float x, float y, Grade grade, boolean focus) {
 		Image bg = GameImage.MENU_BUTTON_BG.getImage();
 		boolean expanded = (beatmapIndex > -1);
-		Beatmap beatmap;
+		Beatmap beatmap = beatmapSet.get(expanded ? beatmapIndex : 0);
 		bg.setAlpha(0.9f);
 		Color bgColor;
 		Color textColor = Options.getSkin().getSongSelectInactiveTextColor();
@@ -88,11 +88,10 @@ public class BeatmapSetNode {
 				textColor = Options.getSkin().getSongSelectActiveTextColor();
 			} else
 				bgColor = Colors.BLUE_BUTTON;
-			beatmap = beatmapSet.get(beatmapIndex);
-		} else {
+		} else if (beatmapSet.isPlayed())
 			bgColor = Colors.ORANGE_BUTTON;
-			beatmap = beatmapSet.get(0);
-		}
+		else
+			bgColor = Colors.PINK_BUTTON;
 		bg.draw(x, y, bgColor);
 
 		float cx = x + (bg.getWidth() * 0.043f);
@@ -122,21 +121,22 @@ public class BeatmapSetNode {
 		if (expanded) {
 			if (beatmap.starRating >= 0) {
 				Image star = GameImage.STAR.getImage();
-				float starOffset = star.getWidth() * 1.7f;
-				float starX = cx + starOffset * 0.04f;
-				float starY = cy + Fonts.MEDIUM.getLineHeight() + Fonts.DEFAULT.getLineHeight() * 2 - 8f * GameImage.getUIscale();
+				float starOffset = star.getWidth() * 1.25f;
+				float starX = cx + starOffset * 0.02f;
+				float starY = cy + Fonts.MEDIUM.getLineHeight() + Fonts.DEFAULT.getLineHeight() * 2 - 6f * GameImage.getUIscale();
 				float starCenterY = starY + star.getHeight() / 2f;
 				final float baseAlpha = focus ? 1f : 0.8f;
 				final float smallStarScale = 0.4f;
+				final int maxStars = 10;
 				star.setAlpha(baseAlpha);
 				int i = 1;
-				for (; i < beatmap.starRating && i <= 5; i++) {
+				for (; i < beatmap.starRating && i <= maxStars; i++) {
 					if (focus)
 						star.drawFlash(starX + (i - 1) * starOffset, starY, star.getWidth(), star.getHeight(), textColor);
 					else
 						star.draw(starX + (i - 1) * starOffset, starY);
 				}
-				if (i <= 5) {
+				if (i <= maxStars) {
 					float partialStarScale = smallStarScale + (float) (beatmap.starRating - i + 1) * (1f - smallStarScale);
 					Image partialStar = star.getScaledCopy(partialStarScale);
 					partialStar.setAlpha(baseAlpha);
@@ -146,16 +146,12 @@ public class BeatmapSetNode {
 					else
 						partialStar.draw(starX + (i - 1) * starOffset, partialStarY);
 				}
-				if (++i <= 5) {
+				if (++i <= maxStars) {
 					Image smallStar = star.getScaledCopy(smallStarScale);
 					smallStar.setAlpha(0.5f);
 					float smallStarY = starCenterY - smallStar.getHeight() / 2f;
-					for (; i <= 5; i++) {
-						if (focus)
-							smallStar.drawFlash(starX + (i - 1) * starOffset, smallStarY, smallStar.getWidth(), smallStar.getHeight(), textColor);
-						else
-							smallStar.draw(starX + (i - 1) * starOffset, smallStarY);
-					}
+					for (; i <= maxStars; i++)
+						smallStar.draw(starX + (i - 1) * starOffset, smallStarY);
 				}
 			}
 		}

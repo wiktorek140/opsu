@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,12 +22,12 @@ import itdelatrisu.opsu.GameData;
 import itdelatrisu.opsu.GameData.HitObjectType;
 import itdelatrisu.opsu.GameImage;
 import itdelatrisu.opsu.GameMod;
-import itdelatrisu.opsu.Options;
 import itdelatrisu.opsu.Utils;
 import itdelatrisu.opsu.audio.SoundController;
 import itdelatrisu.opsu.audio.SoundEffect;
 import itdelatrisu.opsu.beatmap.HitObject;
 import itdelatrisu.opsu.objects.curves.Vec2f;
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.states.Game;
 import itdelatrisu.opsu.ui.Colors;
 
@@ -252,7 +252,7 @@ public class Spinner implements GameObject {
 		else
 			result = GameData.HIT_MISS;
 
-		data.hitResult(hitObject.getEndTime(), result, width / 2, height / 2,
+		data.sendHitResult(hitObject.getEndTime(), result, width / 2, height / 2,
 				Color.transparent, true, hitObject, HitObjectType.SPINNER, true, 0, null, false);
 		return result;
 	}
@@ -264,9 +264,9 @@ public class Spinner implements GameObject {
 	}
 
 	@Override
-	public boolean update(boolean overlap, int delta, int mouseX, int mouseY, boolean keyPressed, int trackPosition) {
+	public boolean update(int delta, int mouseX, int mouseY, boolean keyPressed, int trackPosition) {
 		// end of spinner
-		if (overlap || trackPosition > hitObject.getEndTime()) {
+		if (trackPosition > hitObject.getEndTime()) {
 			hitResult();
 			return true;
 		}
@@ -336,8 +336,6 @@ public class Spinner implements GameObject {
 			drawnRPM = (int) (Math.abs(rotationPerSec * 60));
 
 			rotate(rotationAngle);
-			if (Math.abs(rotationAngle) > 0.00001f)
-				data.changeHealth(DELTA_UPDATE_TIME * GameData.HP_DRAIN_MULTIPLIER);
 		}
 
 		//TODO may need to update 1 more time when the spinner ends?
@@ -380,20 +378,11 @@ public class Spinner implements GameObject {
 
 		// added one whole rotation...
 		if (Math.floor(newRotations) > rotations) {
-			//TODO seems to give 1100 points per spin but also an extra 100 for some spinners
-			if (newRotations > rotationsNeeded) {  // extra rotations
-				data.changeScore(1000);
-				SoundController.playSound(SoundEffect.SPINNERBONUS);
-			}
-			data.changeScore(100);
-			SoundController.playSound(SoundEffect.SPINNERSPIN);
+			if (newRotations > rotationsNeeded)  // extra rotations
+				data.sendSpinnerSpinResult(GameData.HIT_SPINNERBONUS);
+			else
+				data.sendSpinnerSpinResult(GameData.HIT_SPINNERSPIN);
 		}
-
-		// extra 100 for some spinners (mostly wrong)
-//		if (Math.floor(newRotations + 0.5f) > rotations + 0.5f) {
-//			if (newRotations + 0.5f > rotationsNeeded)  // extra rotations
-//				data.changeScore(100);
-//		}
 
 		rotations = newRotations;
 	}

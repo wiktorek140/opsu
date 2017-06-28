@@ -1,6 +1,6 @@
 /*
  * opsu! - an open-source osu! client
- * Copyright (C) 2014, 2015 Jeffrey Han
+ * Copyright (C) 2014-2017 Jeffrey Han
  *
  * opsu! is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 
 package itdelatrisu.opsu;
 
+import itdelatrisu.opsu.options.Options;
 import itdelatrisu.opsu.ui.Fonts;
 
 import java.io.File;
@@ -37,8 +38,6 @@ public enum GameImage {
 	CURSOR ("cursor", "png"),
 	CURSOR_MIDDLE ("cursormiddle", "png"),
 	CURSOR_TRAIL ("cursortrail", "png"),
-	CURSOR_OLD ("cursor2", "png", false, false),  // custom
-	CURSOR_TRAIL_OLD ("cursortrail2", "png", false, false),  // custom
 
 	// Game
 	SECTION_PASS ("section-pass", "png"),
@@ -78,13 +77,6 @@ public enum GameImage {
 	HITCIRCLE_SELECT ("hitcircleselect", "png"),
 	UNRANKED ("play-unranked", "png"),
 	FOLLOWPOINT ("followpoint", "png"),
-	PLAYFIELD ("playfield", "png|jpg", false, false) {
-		@Override
-		protected Image process_sub(Image img, int w, int h) {
-			img.setAlpha(0.7f);
-			return img.getScaledCopy(w, h);
-		}
-	},
 
 	// Game Pause/Fail
 	PAUSE_CONTINUE ("pause-continue", "png"),
@@ -113,6 +105,7 @@ public enum GameImage {
 
 	// Slider
 	SLIDER_GRADIENT ("slidergradient", "png"),
+	SLIDER_GRADIENT_EXPERIMENTAL ("slidergradient_ex", "png"),
 	SLIDER_BALL ("sliderb", "sliderb%d", "png"),
 	SLIDER_FOLLOWCIRCLE ("sliderfollowcircle", "png"),
 	REVERSEARROW ("reversearrow", "png"),
@@ -180,6 +173,7 @@ public enum GameImage {
 	RANKING_TITLE ("ranking-title", "png"),
 	RANKING_MAXCOMBO ("ranking-maxcombo", "png"),
 	RANKING_ACCURACY ("ranking-accuracy", "png"),
+	RANKING_GRAPH ("ranking-graph", "png", false, false),
 	DEFAULT_0 ("default-0", "png"),
 	DEFAULT_1 ("default-1", "png"),
 	DEFAULT_2 ("default-2", "png"),
@@ -242,7 +236,9 @@ public enum GameImage {
 			return img.getScaledCopy((h * 0.3f) / img.getHeight());
 		}
 	},
-	MENU_BACK ("menu-back", "menu-back-%d", "png"),
+	MENU_BACK ("menu-back", "menu-back-%d", "png", false, true),
+	MENU_BACK_CHEVRON ("menu-back-chevron", "png"),
+	MENU_BACK_SLOPE("menu-back-slope", "png"),
 	MENU_BUTTON_BG ("menu-button-background", "png", false, false),
 	MENU_TAB ("selection-tab", "png", false, false) {
 		@Override
@@ -310,6 +306,7 @@ public enum GameImage {
 	MUSIC_PAUSE ("music-pause", "png", false, false),
 	MUSIC_NEXT ("music-next", "png", false, false),
 	MUSIC_PREVIOUS ("music-previous", "png", false, false),
+	MUSIC_NOW_PLAYING ("music-now-playing", "png", false, false),
 
 	DOWNLOADS ("downloads", "png", false, false) {
 		@Override
@@ -355,15 +352,25 @@ public enum GameImage {
 			return img.getScaledCopy((h / 14f) / img.getHeight());
 		}
 	},
-	OPTIONS_BG ("options-background", "png|jpg", false, true) {
-		@Override
-		protected Image process_sub(Image img, int w, int h) {
-			img.setAlpha(0.7f);
-			return img.getScaledCopy(w, h);
-		}
-	},
 	CHEVRON_DOWN ("chevron-down", "png", false, false),
 	CHEVRON_RIGHT ("chevron-right", "png", false, false),
+	CHEVRON_LEFT ("chevron-left", "png", false, false),
+
+	// Options menu
+	SEARCH ("search", "png", false, false),
+	CONTROL_SLIDER_BALL ("control-sliderball", "png", false, false),
+	CONTROL_CHECK_ON ("control-check-on", "png", false, false),
+	CONTROL_CHECK_OFF ("control-check-off", "png", false, false),
+	MENU_NAV_AUDIO ("menu-nav-audio", "png", false, false),
+	MENU_NAV_CUSTOM ("menu-nav-custom", "png", false, false),
+	MENU_NAV_GAMEPLAY ("menu-nav-gameplay", "png", false, false),
+	MENU_NAV_GENERAL ("menu-nav-general", "png", false, false),
+	MENU_NAV_GRAPHICS ("menu-nav-graphics", "png", false, false),
+	MENU_NAV_INPUT ("menu-nav-input", "png", false, false),
+	MENU_NAV_SKIN ("menu-nav-skin", "png", false, false),
+
+	// User selection menu
+	USER ("user", "user%d", "png", false, false),
 
 	// TODO: ensure this image hasn't been modified (checksum?)
 	ALPHA_MAP ("alpha", "png", false, false);
@@ -414,6 +421,9 @@ public enum GameImage {
 
 	/** The unscaled container height that uiscale is based on. */
 	private static final int UNSCALED_HEIGHT = 768;
+
+	/** Value to scale backgrounds for the parallax effect. */
+	public static final float PARALLAX_SCALE = 1.008f;
 
 	/** Filename suffix for HD images. */
 	public static final String HD_SUFFIX = "@2x";
@@ -549,6 +559,19 @@ public enum GameImage {
 	}
 
 	/**
+	 * Constructor for an array of general images.
+	 * @param filename the image file name
+	 * @param filenameFormat the formatted file name string (for loading multiple images)
+	 * @param type the file types (separated by '|')
+	 * @param beatmapSkinnable whether or not the image is beatmap-skinnable
+	 * @param preload whether or not to preload the image
+	 */
+	GameImage(String filename, String filenameFormat, String type, boolean beatmapSkinnable, boolean preload) {
+		this(filename, type, beatmapSkinnable, preload);
+		this.filenameFormat = filenameFormat;
+	}
+
+	/**
 	 * Returns whether or not the image is beatmap-skinnable.
 	 * @return true if beatmap-skinnable
 	 */
@@ -570,6 +593,31 @@ public enum GameImage {
 	}
 
 	/**
+	 * Returns the image associated with this resource.
+	 * This ignores beatmap skin images.
+	 */
+	public Image getDefaultImage() {
+		setDefaultImage();
+		return defaultImage;
+	}
+
+	/**
+	 * Returns an Animation based on the image array.
+	 * If no image array exists, returns the single image as an animation.
+	 */
+	public Animation getAnimation() {
+		Image[] images = getImages();
+		if (images == null)
+			images = new Image[] { getImage() };
+
+		int fps = Options.getSkin().getAnimationFramerate();
+		if (fps == -1)
+			fps = images.length;
+
+		return new Animation(images, 1000 / fps);
+	}
+
+	/**
 	 * Returns an Animation based on the image array.
 	 * If no image array exists, returns the single image as an animation.
 	 * @param duration the duration to show each frame in the animation
@@ -578,6 +626,7 @@ public enum GameImage {
 		Image[] images = getImages();
 		if (images == null)
 			images = new Image[] { getImage() };
+
 		return new Animation(images, duration);
 	}
 
@@ -588,6 +637,15 @@ public enum GameImage {
 	public Image[] getImages() {
 		setDefaultImage();
 		return (skinImages != null) ? skinImages : defaultImages;
+	}
+
+	/**
+	 * Returns the image array associated with this resource.
+	 * This ignores beatmap skin images.
+	 */
+	public Image[] getDefaultImages() {
+		setDefaultImage();
+		return defaultImages;
 	}
 
 	/**
@@ -623,31 +681,25 @@ public enum GameImage {
 	 * If the default image has already been loaded, this will do nothing.
 	 */
 	public void setDefaultImage() {
-		if (defaultImage != null || defaultImages != null)
+		if (defaultImage != null || defaultImages != null || Options.getSkin() == null)
 			return;
 
-		// try to load multiple images
+		// check for multiple images first, then single images
+
+		// try to load from skin directory
 		File skinDir = Options.getSkin().getDirectory();
-		if (filenameFormat != null) {
-			if (skinDir != null && ((defaultImages = loadImageArray(skinDir)) != null)) {
+		if (skinDir != null) {
+			if ((filenameFormat != null && (defaultImages = loadImageArray(skinDir)) != null) ||
+			    (defaultImage = loadImageSingle(skinDir)) != null) {
 				isSkinned = true;
 				process();
 				return;
 			}
-			if ((defaultImages = loadImageArray(null)) != null) {
-				isSkinned = false;
-				process();
-				return;
-			}
 		}
 
-		// try to load a single image
-		if (skinDir != null && ((defaultImage = loadImageSingle(skinDir)) != null)) {
-			isSkinned = true;
-			process();
-			return;
-		}
-		if ((defaultImage = loadImageSingle(null)) != null) {
+		// try to load default image
+		if ((filenameFormat != null && (defaultImages = loadImageArray(null)) != null) ||
+		    (defaultImage = loadImageSingle(null)) != null) {
 			isSkinned = false;
 			process();
 			return;
